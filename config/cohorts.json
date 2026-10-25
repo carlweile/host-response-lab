@@ -1,0 +1,67 @@
+{
+  "_comment": [
+    "Public GEO series with bacterial/viral acute-infection labels.",
+    "expected_counts come from published descriptions of these cohorts and act as a",
+    "CHECK on our own label parsing: if our parse disagrees, the parse is wrong until",
+    "proven otherwise. A null means we have not found a published count to check against,",
+    "so that cohort's labels stay marked unverified."
+  ],
+  "cohorts": [
+    {
+      "accession": "GSE63990",
+      "note": "Tsalik et al., acute respiratory illness, bacterial vs viral vs non-infectious",
+      "expected_counts": {"viral": 115, "bacterial": 70},
+      "source_of_expected": "Tsalik et al., Sci Transl Med 2016;8:322ra11, PMID 26791949, doi:10.1126/scitranslmed.aad6873, Table 1 + text: 273 ill subjects = 70 bacterial, 115 viral, 88 non-infectious; Methods: two microarray batches with seven overlapping samples. Matches our parse only after exclude_samples (arrays 73/117/90 -> subjects 70/115/88). Checked by Claude (AI), not a human, 2026-10-21.",
+      "exclude_samples": {
+        "ids": ["GSM1562133", "GSM1562134", "GSM1562135", "GSM1562136", "GSM1562137", "GSM1562138", "GSM1562139"],
+        "reason": "Re-run arrays of subjects already in the cohort (GEO 280 arrays, paper 273 subjects). sample_274..sample_280, batch 1; they carry exactly the label surplus over Table 1 (3 bacterial, 2 viral, 2 non-infectious). Identity INFERRED, not proven: GEO has no subject ids; cross-batch correlation supports it but the pairing is not clean (LABBOOK 2026-10-21). Excluded by the author's decision A, 21.10.2026; the 280-array result is kept as a README comparison row."
+      }
+    },
+    {
+      "accession": "GSE42026",
+      "note": "Herberg et al., children, H1N1 influenza vs bacterial",
+      "expected_counts": { "viral": 41, "bacterial": 18 },
+      "source_of_expected": "GEO GSE42026 Series overall design (deposited by the authors of Herberg et al., J Infect Dis 2013;208:1664-8, PMID 23901082, doi:10.1093/infdis/jit348): after excluding co-infections, arrays analysed H1N1/09 n=19, RSV n=22, bacterial n=18, controls n=33 -> viral 41, bacterial 18. Cross-check: Tsalik et al. Sci Transl Med 2016 Table 1 lists GSE42026 as 59 subjects (18 + 41). The paper's own Results (25 H1N1 with 6 co-infected, 34 RSV with 11 co-infected) imply 23 RSV, one more than GEO's 22 arrays. Checked by Claude (AI), not a human, 2026-10-21."
+    },
+    {
+      "accession": "GSE60244",
+      "note": "Suarez et al., respiratory tract infection, bacterial vs viral vs co-infection",
+      "expected_counts": {"viral": 71, "bacterial": 22},
+      "source_of_expected": "Suarez et al., J Infect Dis 2015;212:213-22, PMID 25637350, doi:10.1093/infdis/jiv047, Methods: 158 samples [22 bacterial LRTI, 71 viral LRTI, 25 bacterial-viral coinfections, 40 healthy controls]"
+    },
+    {
+      "accession": "GSE40396",
+      "note": "Hu et al., paediatric febrile illness, viral vs bacterial. The 13 afebrile virus-positive children ('fever: no') are excluded, as in the paper's own viral-vs-bacterial test (the author's decision 19.10.2026).",
+      "expected_counts": {"viral": 22, "bacterial": 8},
+      "source_of_expected": "Hu et al., PNAS 2013;110:12792-7, PMID 23858444, doi:10.1073/pnas.1302968110, Results first paragraph: 30 febrile children = 22 viral (8 HHV-6, 8 adenovirus, 6 enterovirus) + 8 bacterial"
+    },
+    {
+      "accession": "GSE6269",
+      "note": "Ramilo et al., paediatric acute infection, influenza vs bacterial pathogens. Run on three array platforms; we take GPL96 only, because the variants are the same patients and would otherwise be treated as independent cohorts.",
+      "prefer_platform": "GPL96",
+      "expected_counts": {"viral": 18, "bacterial": 73},
+      "source_of_expected": "Ramilo et al., Blood 2007;109:2066-77, PMID 17105821, doi:10.1182/blood-2006-02-002477, PMC1801073: Table 1 (set 1, training set) footnote: E coli n=29 + S aureus n=31 + S pneumoniae n=13 = 73 bacterial, influenza A n=18; Results: 'a total of 91 patients ... generated using Affymetrix U133A GeneChips' (= GPL96). CHECKED BY CLAUDE (AI), NOT BY A HUMAN: 2026-10-20 and re-read 2026-10-21 (the author's decision D2, 21.10.2026)."
+    }
+  ],
+  "label_rules": {
+    "_comment": "Applied to the lower-cased concatenation of a sample's characteristics. First matching class wins, so order matters: exclusions are checked before the two target classes.",
+    "order": ["exclude", "bacterial", "viral"],
+    "exclude": [
+      "co-infection", "coinfection", "co infection", "bacterial and viral",
+      "non-infectious", "noninfectious", "non infectious", "sirs",
+      "healthy", "control", "convalescent", "uninfected", "ill-defined",
+      "fever: no"
+    ],
+    "bacterial": [
+      "bacterial", "bacteria", "streptococcus", "staphylococcus", "s. aureus",
+      "s. pneumoniae", "e. coli", "escherichia", "klebsiella", "neisseria",
+      "meningococcal", "pneumococcal", "salmonella", "group a strep",
+      "haemophilus", "influenzae"
+    ],
+    "viral": [
+      "viral", "virus", "influenza", "h1n1", "rhinovirus", "rsv",
+      "respiratory syncytial", "adenovirus", "enterovirus", "metapneumovirus",
+      "coronavirus", "parainfluenza", "hhv", "ebv", "cmv"
+    ]
+  }
+}

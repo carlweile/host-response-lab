@@ -1,0 +1,137 @@
+{
+  "parts": {
+    "e1": {
+      "date": "2026-10-21",
+      "seconds": 119.4
+    },
+    "e3": {
+      "date": "2026-10-19",
+      "seconds": 26.2
+    },
+    "e4": {
+      "date": "2026-10-19",
+      "seconds": 43.0
+    },
+    "e2a": {
+      "date": "2026-10-19",
+      "seconds": 864.1
+    },
+    "e2b": {
+      "date": "2026-10-19",
+      "seconds": 891.5
+    },
+    "mirror": {
+      "date": "2026-10-19",
+      "seconds": 57.7
+    }
+  },
+  "plan_commit": "cc7ba64",
+  "python": "3.12.10",
+  "versions": {
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "lightgbm": "4.7.0"
+  },
+  "verdicts": {
+    "E0": {
+      "cohort_rank/lightgbm": {
+        "max_abs_diff": 1.1102230246251563e-16,
+        "tolerance": 0.02,
+        "verdict": "reproduced"
+      },
+      "cohort_rank/logistic_l2": {
+        "max_abs_diff": 1.1102230246251563e-16,
+        "tolerance": 0.005,
+        "verdict": "reproduced"
+      },
+      "raw/lightgbm": {
+        "max_abs_diff": 2.220446049250313e-16,
+        "tolerance": 0.02,
+        "verdict": "reproduced"
+      },
+      "raw/logistic_l2": {
+        "max_abs_diff": 0.000640204865557,
+        "tolerance": 0.005,
+        "verdict": "reproduced"
+      },
+      "within_sample/lightgbm": {
+        "max_abs_diff": 1.1102230246251563e-16,
+        "tolerance": 0.02,
+        "verdict": "reproduced"
+      },
+      "within_sample/logistic_l2": {
+        "max_abs_diff": 1.1102230246251563e-16,
+        "tolerance": 0.005,
+        "verdict": "reproduced"
+      }
+    },
+    "P1": {
+      "within": 0.9568923993457077,
+      "cross": 0.6710466766069177,
+      "pooled": 0.7377962524437202,
+      "verdict": "supported"
+    },
+    "LightGBM_direction": {
+      "within_minus_pooled": 0.039296799255545745,
+      "verdict": "as predicted"
+    },
+    "iteration_cap": {
+      "logistic_fits_at_3000": 0
+    },
+    "P4": {
+      "inductive_pooled": 0.9185834957764782,
+      "transductive_pooled": 0.7377962524437202,
+      "verdict": "KILLED"
+    },
+    "P1b": {
+      "in_cohort_rcv_minus_loco": 0.0666025773505781,
+      "verdict": "supported"
+    },
+    "share_vs_mean_logit_spearman": {
+      "cohort_rank/lightgbm": {
+        "bacterial": -0.09999999999999999,
+        "viral": -0.7
+      },
+      "cohort_rank/logistic_l2": {
+        "bacterial": -0.8999999999999998,
+        "viral": -0.9999999999999999
+      },
+      "raw/lightgbm": {
+        "bacterial": 0.7,
+        "viral": 0.3
+      },
+      "raw/logistic_l2": {
+        "bacterial": 0.8999999999999998,
+        "viral": 0.49999999999999994
+      },
+      "within_sample/lightgbm": {
+        "bacterial": 0.7,
+        "viral": 0.3
+      },
+      "within_sample/logistic_l2": {
+        "bacterial": 0.8999999999999998,
+        "viral": 0.09999999999999999
+      }
+    },
+    "P2": {
+      "gap_mean": 0.0688062710449139,
+      "verdict": "supported"
+    },
+    "P3": {
+      "gap_mean": -0.1130964510227003,
+      "verdict": "supported"
+    },
+    "P5": {
+      "mean_diff": -0.000870685827874216,
+      "per_cohort": {
+        "GSE40396": -0.0007,
+        "GSE42026": -0.0018,
+        "GSE60244": 0.001,
+        "GSE6269": -0.0035,
+        "GSE63990": 0.0006
+      },
+      "verdict": "supported"
+    }
+  }
+}

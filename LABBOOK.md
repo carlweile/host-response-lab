@@ -1,0 +1,1527 @@
+# LABBOOK — host-response-lab
+
+> **Constitution:** [CORE.md](CORE.md) — the question, what success looks like, the kill criterion, the core ideas, and what a driver agent may propose. Diary: `LABBOOK.md`.
+
+The story of this repo across time. One dated entry per working session, appended
+before the session ends. Question drift gets written down the day it happens.
+
+> **About this copy.** This is the lab diary from the private working repo, kept
+> as written apart from a privacy scrub: internal tool, session and task-card
+> names were removed, and one entry about unsent emails to other researchers
+> was dropped. Commit hashes and branch names below refer to that private
+> history and do not exist in this repository. Planning briefs under `docs/`
+> and the HTML pages under `reports/` that some entries mention were internal
+> working notes and are not included. Entries "written by Claude" were written
+> by an AI coding assistant; "the author" decided what is noted as decided.
+
+---
+
+## 2026-10-10 — repo built, first measurement taken
+
+**Question asked.** Published host-response signatures that separate bacterial
+from viral infection report AUCs around 0.93 to 0.95. How much of that survives
+being tested on a hospital cohort the model has never seen?
+
+**Why this and not a new classifier.** A prior-art sweep was run *before* any code
+(see README). The field is commercially mature: Inflammatix TriVerity is FDA-cleared
+since January 2025 (29 genes, bacterial + viral + severity scores, 1,222 patients
+across 22 sites), MeMed BV is cleared as a 3-protein test, and Bodkin et al. 2022 in
+Genome Medicine already compared 28 published signatures across 51 datasets. So the
+question was deliberately narrowed from "build a better signature" to "ship runnable
+code that measures the optimistic number and the cohort-held-out number in one run".
+A deeper sweep the same evening sharpened this further; see the second entry below.
+
+**What was built.** Fetch from the GEO FTP mirror, SOFT-format parsing, label
+assignment with published-count verification, probe-to-symbol harmonization across
+platforms, and two validation schemes. 24 tests, each constructing the bug it guards
+against. CPU only; the GPU was never used.
+
+**Data actually used.** Five public cohorts, 476 labelled samples, 12,040 gene
+symbols shared across all five platforms.
+
+| Cohort | Platform | Bacterial | Viral | Labels |
+|---|---|---|---|---|
+| GSE63990 | GPL571 | 73 | 117 | **verified against published counts** |
+| GSE42026 | GPL6947 | 18 | 41 | **verified against published counts** |
+| GSE60244 | GPL10558 | 22 | 71 | unverified |
+| GSE40396 | GPL10558 | 8 | 35 | unverified |
+| GSE6269 | GPL96 | 73 | 18 | unverified |
+
+The two cohorts with published counts to check against reproduced them **exactly**,
+which is the strongest evidence available that the label parsing is not inventing
+its own study.
+
+**Measured — raw expression scale.**
+
+| Model | Random CV | Leave-one-cohort-out | Gap |
+|---|---|---|---|
+| Logistic L2 | 0.954 | 0.885 | **0.069** |
+| LightGBM | 0.956 | 0.825 | **0.131** |
+
+**Measured — with within-cohort rank normalization (`--rank-normalize`).**
+
+| Model | Random CV | Leave-one-cohort-out | Gap |
+|---|---|---|---|
+| Logistic L2 | 0.743 | 0.893 | **−0.150** |
+| LightGBM | 0.904 | 0.895 | **0.008** |
+
+**What we now believe.**
+
+1. **The gap is real and reproducible.** Random cross-validation on raw data gives
+   0.95, matching the published within-cohort range. Holding out a whole cohort
+   costs 0.07 to 0.13 AUC. The one published study that used fully independent
+   prospective cohorts reported 0.93 falling to 0.84, so our numbers sit in the
+   same place as the literature's own external validation.
+2. **The more flexible model pays more.** LightGBM lost nearly twice what the
+   regularized linear model lost, and on its worst held-out cohort (GSE6269) it
+   fell to **0.625**, close to useless, where logistic regression held **0.944** on
+   the same cohort. The booster found cohort-specific structure and leaned on it.
+   This is the clearest single result of the day.
+3. **Rank normalization appears to erase the gap, and that reading is NOT yet
+   earned.** See below.
+
+**Claim-check on finding 3.**
+- *Claim one might want to make:* "within-cohort rank normalization fixes
+  cross-cohort generalization."
+- *What was actually measured:* with rank normalization the LightGBM gap fell to
+  0.008 and its worst cohort rose from 0.625 to 0.922.
+- *Rival explanation, and the better one:* rank normalization computes each
+  patient's percentile **using the other patients in the same cohort**. For a
+  held-out cohort that means the transform reads the whole test set before
+  predicting. That is transduction, not generalization, and a bedside test seeing
+  one patient at a time cannot do it. The apparent fix may be the leak.
+- *The control that would settle it:* normalize each sample against itself only
+  (within-sample ranking across genes, no other patient involved) and re-measure.
+  Until that is run, finding 3 stays **unproven**.
+- *Unexplained and flagged:* logistic regression's random-CV AUC **fell** to 0.743
+  under rank normalization while its held-out-cohort AUC rose, giving a negative
+  gap. A negative gap should not happen if both schemes measure the same thing.
+  The leading suspicion is that per-cohort ranking is confounded with each cohort's
+  class balance, which ranges from 19% bacterial (GSE40396) to 80% (GSE6269). Not
+  yet tested. **Do not quote the rank-normalized numbers to anyone until this is
+  understood.**
+
+**Where it lives.** `results/summary_raw.csv`, `results/summary_ranknorm.csv`,
+`results/folds_*.csv`, `results/label_review.md`, `results/run_*.json`.
+
+**Two bugs found by running it, both now pinned by tests.** GEO's directory naming
+collapses three-digit accessions to the bare `nnn` form, so `GPL571` lives in
+`GPLnnn` and the first implementation generated 404s. And `.annot.gz` files are
+SOFT format whose real header follows a `!platform_table_begin` fence, so reading
+the first non-comment line silently skipped every cohort.
+
+**Next session, in order.**
+1. Run the within-sample normalization control. It decides whether finding 3 is a
+   result or an artefact, and nothing else should be reported until it is done.
+2. Explain or eliminate the negative logistic gap.
+3. Find published class counts for GSE60244, GSE40396 and GSE6269 so three more
+   cohorts move from unverified to verified.
+4. Only then: per-cohort error analysis, and whether the gap tracks platform,
+   patient age, or class balance.
+
+---
+
+## 2026-10-10 (later) — deeper prior-art sweep, claim narrowed again
+
+**Question asked.** The author asked directly whether a project like this already
+exists. The morning sweep was not deep enough to answer that, so it was redone
+against the primary literature and against public code.
+
+**What was found.**
+
+| Source | What it actually does |
+|---|---|
+| Bodkin et al. 2022, *Genome Medicine* | 28 signatures, 51 datasets, 4,589 subjects. **Fitted a fresh lasso logistic regression inside each dataset** and used nested leave-one-out CV *within* each dataset. Quoted: "Creating dataset-specific models overcomes batch effects since each signature is optimized in each dataset." Does **not** report a discovery-versus-external drop. Code is a supplementary Python file only, no repo, no licence stated |
+| Chawla et al. 2022, *Cell Systems* | 30 signatures against a 17,105-profile compendium. Measures **robustness and cross-reactivity**, including false firing on ageing; finds the two conflict |
+| MetaIntegrator (Khatri lab) | R package with leave-one-dataset-out built in. Reportedly off CRAN since 2024-10-14 |
+| `rmaghembe1/host-response-module-transportability` | Scores **fixed, locked modules** across cohorts. README states it "is not a diagnostic classifier-discovery study". No held-out-cohort training scheme, 0 stars, runnability unverified |
+| bvnGPS | Gene-pair signatures, 2,680 samples, 16 cohorts |
+
+**What we now believe.**
+
+1. **The question is not taken.** The largest comparison in the field removed the
+   batch effect by construction instead of measuring it, and says so plainly. The
+   second-largest benchmark measures a different property. So "train on four
+   hospitals, test on the fifth, report the drop" is not what either did.
+2. **The method is not novel.** Leave-one-dataset-out is packaged in
+   MetaIntegrator and used routinely in multi-cohort meta-analysis. Nothing here
+   invents a technique.
+3. **Cross-cohort validation does exist in primary papers** from well-resourced
+   groups, for example the 29-mRNA classifier trained across 18 studies. Their
+   code is not public. So the shortage is runnable code, not insight.
+4. **Scale is the honest weakness.** Five cohorts and 476 samples is about a tenth
+   of Bodkin's 51 datasets and 4,589 subjects. Any claim must be framed as
+   reproducibility and engineering, never as a bigger or better study.
+
+**Correction made.** The morning's README, this labbook and the brain note all
+described Bodkin as validating "with leave-one-out validation", which reads as
+leave-one-dataset-out. It was leave-one-out *within* each dataset, which is close
+to the opposite of what matters here. All copies corrected.
+
+**Where it lives.** README section *Prior art*, including the paragraph that now
+justifies the repo by quoting Bodkin's own design choice.
+
+**Next session.** Unchanged, and the control experiment is still first. Add one
+item: pull the numbers from Bodkin's Table 2 so this repo's random-CV result has a
+published figure to sit beside.
+
+---
+
+## 2026-10-18 — within-sample normalization control
+
+**Question asked.** The 2026-10-10 rank-normalised run seemed to erase the
+held-out-cohort gap. But that transform ranks each gene against the OTHER patients
+of the same cohort, so on a held-out cohort it reads the whole test set before
+predicting. Does the gap survive a transform that reads one patient at a time,
+which is the only kind a bedside test could use?
+
+**What was done.** Added `rank_normalize_within_sample` (`src/splits.py`): each
+sample's own 12,040 gene values are ranked against each other (percentile, ties
+averaged, NaN -> 0.5). No other patient is read, in train or test. Added flag
+`--within-sample-normalize` to `run_pipeline.py` (exclusive with
+`--rank-normalize`). The model's `StandardScaler` sits inside the pipeline and is
+fitted on the training fold only (read in `src/train.py`), so it adds no leak.
+New test `tests/test_within_sample_normalize.py` swaps every other row of the
+test cohort for noise and asserts the row's output is identical; a second test
+builds the leaky cohort-wise transform and asserts the same guard FIRES on it.
+Suite: 28 passed. `config/cohorts.json` untouched (no diff).
+Command: `python run_pipeline.py --train --within-sample-normalize` (CPU, ~2 min).
+
+**Measured** (mean AUC over 5 folds, one seed, 476 samples, 5 cohorts, 12,040 genes):
+
+| model | transform | random-CV | leave-one-cohort-out | gap |
+|---|---|---|---|---|
+| LightGBM | raw | 0.956 | 0.825 | **0.131** |
+| LightGBM | within-sample | 0.954 | 0.857 | **0.097** |
+| logistic L2 | raw | 0.954 | 0.885 | **0.069** |
+| logistic L2 | within-sample | 0.961 | 0.900 | **0.061** |
+
+(The cohort-wise rank-normalised run stays in `results/summary_ranknorm.csv`; its
+numbers are not quoted outside this repo.)
+
+Held-out AUC per cohort, raw -> within-sample:
+
+| held-out cohort | LightGBM | logistic L2 |
+|---|---|---|
+| GSE40396 (n=43, 8 bacterial) | 0.868 -> 0.761 | 0.889 -> 0.893 |
+| GSE42026 | 0.885 -> 0.818 | 0.812 -> 0.860 |
+| GSE60244 | 0.848 -> 0.894 | 0.848 -> 0.866 |
+| GSE6269 | 0.625 -> 0.916 | 0.944 -> 0.953 |
+| GSE63990 | 0.899 -> 0.895 | 0.930 -> 0.929 |
+
+**What it means in plain words.** Random-CV still sits around 0.95-0.96 under every
+transform. Held-out-cohort AUC stays lower. A leak-free transform leaves most of
+the gap in place: LightGBM 0.131 -> 0.097, logistic 0.069 -> 0.061. The
+LightGBM shrinkage is mostly ONE cohort (GSE6269, 0.625 -> 0.916) while two
+others got worse; with 5 folds, one seed and no confidence interval, that is not
+evidence of a general improvement. GSE40396 has only 8 positives, so its AUC is
+very noisy.
+
+**What we now believe.**
+1. **Finding 3 ("rank normalization fixes it") is RETRACTED.** The closure seen
+   on 2026-10-10 does not reproduce under a bedside-legal transform, which fits
+   the transduction explanation (the cohort-wise transform read the test cohort).
+   This run does not by itself prove transduction was the whole cause.
+2. The held-out-cohort drop is real under one-patient-at-a-time scoring for both
+   models, at 0.06-0.10 AUC. It is not shown to be "cohort-specific structure
+   removable by a per-cohort transform".
+3. Within-sample ranking keeps only gene ORDER, not absolute level, so this
+   control tests one particular bedside-legal transform, not every possible one.
+4. Still OPEN (next-step 2): the class-balance rival and the negative logistic gap
+   seen in the cohort-wise run. Under the within-sample transform the logistic gap
+   is positive (0.061), so the negative gap looks specific to the cohort-wise
+   transform, but that is not yet explained.
+
+**Where it lives.** `results/summary_withinsample.csv`, `folds_withinsample.csv`,
+`run_withinsample.json`; code in `src/splits.py` + `run_pipeline.py`; test in
+`tests/test_within_sample_normalize.py`; branch `within-sample-control`.
+
+**Next session.** Item 2 above (class balance / negative logistic gap), then more
+seeds for a spread on the LightGBM gap before quoting any number.
+
+## 2026-10-18 (evening) — CORE.md accepted
+
+**Question.** Does the lab adopt the drafted constitution (branch `docs/core-md`)?
+**Done.** The author accepted it as proposed; merged into master with a merge commit (38920b1). The cohort set is FROZEN at the current five GEO cohorts.
+**Result (measured).** Nothing run; docs only.
+**Belief.** Unchanged. CORE §2 success condition 1 (within-sample control) is already met by the 2026-10-18 within-sample control; conditions 2 (labels for GSE60244, GSE40396, GSE6269 verified against papers) and 4 (one traceable sentence) remain.
+**Where.** `CORE.md`; this file.
+
+---
+
+## 2026-10-19 — PLAN, pre-registered before any run: why is the logistic gap negative? (CORE §2 condition 3)
+
+_Night run on branch `night/2026-10-19`, written by Claude while the author sleeps (they
+approved the night run at 02:50). This plan is committed BEFORE any experiment
+runs and is not edited afterwards. Any change gets a new dated line under it._
+
+**The puzzle.** On 2026-10-10, with cohort-wise rank normalisation
+(`--rank-normalize`), logistic regression scored 0.743 in random cross-validation
+but 0.893 on held-out cohorts, a gap of −0.150 (`results/summary_ranknorm.csv`).
+Holding a whole hospital out should not be easier than a random split, so
+something in the measurement is off. The per-fold file points the same way: all
+five random-CV folds are low (0.687 to 0.770, `results/folds_ranknorm.csv`), so
+it is not one unlucky fold.
+
+**Claim to test (one sentence).** The negative gap is a measurement artefact:
+the random-CV AUC is computed over test patients from all five cohorts mixed
+together, and under cohort-wise ranking each cohort's scores sit on their own
+scale, shifted by that cohort's share of bacterial patients (19 % to 80 %); the
+held-out-cohort AUC is computed inside one cohort, where such a shift cancels.
+
+In plain words: AUC asks "pick one bacterial and one viral patient: how often
+does the bacterial one get the higher score?". In random CV about three in four
+of those pairs mix two hospitals. Ranking inside a mostly-bacterial hospital
+pushes all its patients' scores down (and inside a mostly-viral one, up). Then
+the mixed-hospital pairs go wrong, even if the model sorts the patients inside
+each hospital well.
+
+**What the instrument can see.** The same test patients and the same scores,
+sorted into pairs from the SAME cohort and pairs from DIFFERENT cohorts; and
+re-runs where every cohort's bacterial share is made equal.
+
+**Experiments.** CPU only. One new script `run_gap_diagnostics.py`, helpers in
+`src/` with tests that go red on the broken version.
+- **E0 reproduction.** Re-run both schemes (seed 0, same folds) for raw,
+  cohort-wise and within-sample transforms, both models, keeping every test
+  score. Passes if every fold AUC matches `results/folds_*.csv` within 0.005
+  (logistic) or 0.02 (LightGBM; thread count can move it a little). If not:
+  report the drift and use the fresh numbers.
+- **E1 pair split.** Per random-CV fold: AUC over same-cohort pairs ("within"),
+  over different-cohort pairs ("cross"), over all pairs ("pooled", the number on
+  file). Pooled must equal the pair-weighted mix of the two (built-in check).
+  Also, from the out-of-fold scores: random-CV AUC inside each cohort next to
+  that cohort's held-out AUC; mean score per cohort and class; whether any
+  logistic fit stopped at its 3,000-iteration cap.
+- **E2a class balance.** Drop patients at random until every cohort is 50 %
+  bacterial (8+8, 18+18, 22+22, 18+18, 73+73 = 278 patients), redo the
+  cohort-wise ranking on that subset, run both schemes. 10 random subsets; the
+  same subsets also under raw and within-sample.
+- **E2b size control.** Same cohort sizes as E2a, but each cohort keeps its
+  ORIGINAL bacterial share. 10 random subsets. This separates "equal balance"
+  from "fewer patients".
+- **E3 transduction, random-CV side.** Cohort-wise ranking where each test
+  patient is ranked only against the TRAINING patients of its own cohort (no
+  other test patient is read). Compare with the version on file.
+- **E4 transduction, held-out side.** For each held-out cohort, 20 random splits
+  into half A and half B. Score B two ways: ranked within the whole cohort (as
+  on file), or ranked against half A only (no other B patient is read). Compare
+  the AUC on B.
+
+**Pre-registered predictions** (logistic regression, cohort-wise ranking,
+unless named otherwise):
+- **P1 (E1):** within-cohort-pair AUC ≥ 0.88 (mean of 5 folds). The claim is
+  KILLED if it is < 0.85: then the model really is worse in random CV, not just
+  the scoring. (Cross-cohort-pair AUC is reported; with pooled at 0.743 and about
+  3/4 of pairs being cross-cohort, it must then be about 0.70 or lower.)
+- **P1b (E1):** random-CV AUC inside each cohort minus that cohort's held-out
+  AUC, averaged over the 5 cohorts, ≥ −0.02. KILLED if ≤ −0.05.
+- **P2 (E2a):** with equal class balance, the mean gap over 10 subsets is
+  ≥ −0.02. The class-balance part is KILLED if the mean gap is ≤ −0.05.
+- **P3 (E2b):** with the original balance at the same smaller sizes, the mean
+  gap stays ≤ −0.05. If it is ≥ −0.02 instead, the smaller sample (not the
+  balance) closed the gap, and the class-balance part is NOT supported.
+- **P4 (E3):** with test patients kept out of the ranking, the random-CV pooled
+  AUC stays within ±0.03 of the E0 number (0.743 on file). If it rises to
+  ≥ 0.85, transduction on the random-CV side causes the low number and the claim
+  is wrong.
+- **P5 (E4):** the mean AUC difference on half B (whole-cohort ranking minus
+  half-A ranking) is ≤ +0.02. If larger, reading the other test patients lifts
+  the held-out number.
+- A result between the two numbers of a prediction is reported as "partial".
+- LightGBM: direction only (within-cohort-pair AUC ≥ pooled AUC). Raw and
+  within-sample transforms: measured and reported, no prediction made.
+
+**Rival explanations and the control for each.**
+- Metric mismatch (the claim itself): E1.
+- Class balance as the reason for the per-cohort shift: E2a; "it is only fewer
+  patients": E2b.
+- Transduction (the transform reads test patients): E3 for random CV, E4 for
+  held-out cohorts.
+- A pipeline bug (rows and labels out of order; a fit that did not finish):
+  E0, an index-alignment assert, the iteration-cap check. LightGBM on the same
+  matrix already reaches 0.904 in random CV, so a gross row/label mix-up is
+  unlikely.
+- Other cohort differences (age, platform, severity) that shift scores: what is
+  left over if P2 fails; they become the next suspects.
+
+**Who judges.** These thresholds, committed to git before the run (the commit
+time is the proof). No blind outside agent is available in this night lane, so
+every result is "self-assessed against pre-registered thresholds" until a fresh
+agent or the author re-runs `python run_gap_diagnostics.py` from `data/`.
+
+**Budget and fences.** CPU only, about 1,300 model fits, expected 20 to 60
+minutes on the desktop. With all 16 threads this can add up to more than one
+CPU-hour, so this entry is the plan entry CORE §7 asks for. No change to
+`config/cohorts.json`, `expected_counts`, the cohort set, CORE §1–§5 or the
+existing results files. Rank-normalised numbers stay inside this repo.
+
+_2026-10-19 03:15, clarification before the real-data run (no threshold changed)._
+Averaging, fixed in code before any real-data run: the P2/P3 gap of one subset =
+mean random-CV AUC over its 5 folds minus mean held-out AUC over its 5 cohorts,
+then the mean over the 10 subsets. P5 = mean over the 20 splits inside each
+cohort, then the mean over the 5 cohorts (each cohort counts once, like the
+held-out AUC). P1b uses the out-of-fold scores of the 5 random-CV folds, inside
+each cohort. Seeds: subsets 0-9, half splits 0-19, random-CV folds as on file
+(seed 0). One thing was already seen before the run, on made-up data only: the
+positive-control test in `tests/test_gap_diagnostics.py` (4 synthetic cohorts,
+one shared signal, NO batch effect) gives pooled random-CV 0.80 vs held-out 0.99
+when the bacterial shares are 20/20/80/80 %, and 0.998 vs 0.996 when all are
+50 %. So the mechanism CAN produce a negative gap; whether it is what happens in
+the real cohorts is what E1-E4 test.
+
+---
+
+## 2026-10-19 — RESULT: a post-hoc explanation for the negative logistic gap (CORE §2 condition 3)
+
+_Wording corrected after the outside check (04:33); every changed sentence is
+listed in the "Outside check" entry at the end of this file._
+
+**In short.** The −0.150 was not about held-out cohorts at all. Post-hoc
+explanation, consistent with E3 and the exploratory mirror table, and NOT the
+cause my PLAN pre-registered (P4 killed that one): the cohort-wise
+ranking on file was done on each whole hospital BEFORE random CV split it into
+training and test patients. That tie, together with hospitals that are 19 % to
+80 % bacterial, pushed each hospital's test patients onto a shifted score scale,
+so pairs of patients from two different hospitals were often sorted the wrong
+way. Ranking test patients against training patients only, or making every
+hospital 50 % bacterial, removes the negative gap.
+
+**Question asked.** Under cohort-wise ranking (`--rank-normalize`), why did
+logistic regression score 0.743 in random CV but 0.893 on held-out cohorts, a
+gap of −0.150? Pass and kill rules: the PLAN entry above, committed at 03:07
+(cc7ba64) before the first run started at 03:15.
+
+**What ran.** `python run_gap_diagnostics.py` (parts E0-E4, about 33 minutes),
+then `--parts mirror` (1 minute). Desktop PC, CPU only, branch
+`night/2026-10-19`. 476 patients, 5 cohorts, 12,040 genes, the same models and
+the same random-CV folds (seed 0) as the files on record. "Score" below means
+the model's log-odds for "bacterial": 0 is 50:50, +2 is about 7 to 1 for
+bacterial, −2 about 7 to 1 for viral.
+
+**E0, reproduction: passed.** Every fold AUC on file came out again. The
+largest difference was 0.0008 (one raw logistic fold; the limit was 0.005).
+No logistic fit in any part hit its iteration cap (at most 153 of 3,000
+steps), and rows and labels were checked to be in the same order. So the
+−0.150 is not a crash, an unfinished fit or a row mix-up.
+
+**E1, where the gap lives.** AUC = "pick one bacterial and one viral patient:
+how often does the bacterial one get the higher score". In a random-CV test fold,
+23 % of these pairs come from the same hospital and 77 % from two different
+hospitals. Random-CV AUC split by pair type (mean of 5 folds), next to the
+held-out AUC (mean of 5 cohorts, always inside one hospital):
+
+| transform | model | random-CV, all pairs (on file) | same-hospital pairs | cross-hospital pairs | held-out cohort | gap |
+|---|---|---|---|---|---|---|
+| raw | logistic | 0.954 | 0.954 | 0.953 | 0.884 | 0.069 |
+| raw | LightGBM | 0.956 | 0.949 | 0.958 | 0.825 | 0.131 |
+| within-sample | logistic | 0.961 | 0.959 | 0.962 | 0.900 | 0.061 |
+| within-sample | LightGBM | 0.954 | 0.951 | 0.954 | 0.857 | 0.097 |
+| cohort-wise, as on file | logistic | **0.743** | 0.954 | **0.680** | 0.893 | **−0.150** |
+| cohort-wise, as on file | LightGBM | 0.904 | 0.951 | 0.889 | 0.895 | 0.008 |
+
+In plain words: under cohort-wise ranking, logistic regression sorts patients
+INSIDE one hospital as well as on raw data (0.954), but for pairs from two
+hospitals it gets only 0.680 right. Those mixed pairs are 3 in 4 of all pairs,
+so they drag the random-CV number down to 0.743. P1 (same-hospital pairs
+≥ 0.88): **supported**, 0.954. P1b (random-CV AUC inside each cohort minus its
+held-out AUC, mean of 5 cohorts, ≥ −0.02): **supported**, +0.061.
+For raw and within-sample data the two kinds of pairs agree to within 0.01
+(raw logistic 0.954 vs 0.953), so the positive gaps on file do NOT carry this
+artefact.
+
+**E3, what breaks the mixed pairs.** The cohort-wise ranking on file ranks each
+WHOLE cohort before the random split, so every test patient is ranked together
+with the training patients of its hospital. E3 ranks each test patient against
+the training patients of its own cohort only:
+
+| model | random-CV, all pairs | same-hospital pairs | cross-hospital pairs | held-out (unchanged) | gap |
+|---|---|---|---|---|---|
+| logistic | 0.915 (was 0.743) | 0.955 | 0.903 (was 0.680) | 0.893 | +0.022 |
+| LightGBM | 0.933 (was 0.904) | 0.949 | 0.928 (was 0.889) | 0.895 | +0.037 |
+
+The PLAN said: if this rises to 0.85 or more, transduction on the random-CV side
+causes the low number and the claim is wrong. It rose to 0.915, so **P4 KILLED
+the cause named in my PLAN claim** (simple ranking arithmetic of class balance).
+The "mixed pairs" part of the claim stands (E1); the post-hoc explanation (not
+pre-registered) is the ranking of test and training patients together.
+
+**Mirror (exploratory: added after seeing E1 and E3, no threshold was set for
+it).** Why does ranking them together hurt? Cohort-wise ranks give each gene
+almost the same average in every hospital (a percentile rank averages
+(n+1)/2n, which shifts a little with hospital size). For a model that is a
+weighted sum, like logistic regression, this almost fixes the average score of
+each hospital's training and test patients taken together. Mean logistic score of the SAME fold model,
+averaged over the 5 folds (`results/gapdiag_mirror.csv`):
+
+| cohort | bacterial share | training patients | test patients | both together | test patients, E3 ranking |
+|---|---|---|---|---|---|
+| GSE40396 | 19 % | −1.94 | +1.75 | −1.18 | −1.39 |
+| GSE60244 | 24 % | −1.78 | +1.50 | −1.14 | −1.16 |
+| GSE42026 | 31 % | −1.53 | +0.01 | −1.16 | −1.83 |
+| GSE63990 | 38 % | −1.16 | −0.95 | −1.12 | −1.18 |
+| GSE6269 | 80 % | +0.20 | −6.23 | −1.14 | −0.77 |
+
+The model fits each hospital's training patients toward that hospital's
+bacterial share: their average score rises from −1.94 (19 % bacterial) to +0.20
+(80 %). Because the total is almost fixed (−1.12 to −1.18 in every hospital), the same
+hospital's test patients move the other way (+1.75 down to −6.23). Result: the bacterial test patients of GSE6269 average −3.96,
+below the viral test patients of GSE40396 (+0.64), so mixed pairs fail. With the
+E3 ranking the test column no longer slides (−0.77 to −1.83), and those two
+groups sit at +1.88 and −2.68 again. Leave-one-cohort-out never splits a
+hospital into training and test patients, so it never meets this effect.
+
+**E2, is unequal class balance needed?** 10 random subsets per design; the
+cohort-wise ranking is redone on each subset, still before the split as on file:
+
+| subsets | model | random-CV | held-out | gap: mean (lowest to highest) |
+|---|---|---|---|---|
+| E2a: every cohort 50 % bacterial (278 patients) | logistic | 0.955 | 0.889 | **+0.066** (+0.029 to +0.120) |
+| E2a | LightGBM | 0.931 | 0.880 | +0.051 (+0.036 to +0.071) |
+| E2b: same sizes, each cohort's own share | logistic | 0.752 | 0.870 | **−0.118** (−0.144 to −0.076) |
+| E2b | LightGBM | 0.860 | 0.867 | −0.007 (−0.032 to +0.035) |
+
+With equal shares the negative gap is gone in all 10 subsets (P2:
+**supported**). With the original shares at exactly the same sizes it is back in
+all 10 (P3: **supported**). So it is the unequal balance, not the smaller sample.
+On the same subsets, raw and within-sample gaps stay positive (logistic +0.04 to
++0.06, LightGBM +0.08 to +0.09; `results/gapdiag_balance_summary.csv`).
+
+**E4, the held-out side.** For each held-out cohort, half B was scored with
+ranks from the whole cohort (as on file) or with ranks from the other half A
+only (no other B patient read), 20 random halves per cohort. Mean AUC difference
+on B: logistic +0.000 (per cohort −0.003 to +0.003), LightGBM −0.002. P5
+(≤ +0.02): **supported**. Reading the other test patients does not lift the
+held-out number. It still needs other patients of the SAME hospital as a
+reference, so it is still not a one-patient-at-a-time (bedside) number.
+
+**What we now believe.**
+1. CORE §2 condition 3 is proposed as met, pending the author's decision
+   (self-assessed, see below).
+   The −0.150 says nothing about cohort generalisation. Post-hoc explanation
+   (not pre-registered): it is an artefact of
+   random CV meeting a ranking done before the split: unequal bacterial shares
+   plus training and test patients tied together.
+2. My PLAN claim was half right. "The mixed-hospital pairs fail" held. The cause
+   I named was killed by its own pre-registered control (P4); the post-hoc
+   explanation, consistent with E3 and the exploratory mirror table, is
+   a transduction step, the kind of mistake CORE §4 warns about, here making a
+   number look WORSE instead of better.
+3. The positive raw and within-sample gaps on file are not touched by this
+   artefact: their same-hospital and cross-hospital pairs agree to within 0.01.
+4. The 2026-10-10 "LightGBM gap closes to 0.008" was partly the same artefact:
+   its random-CV side was pulled down (0.904 instead of 0.933 with E3 ranking).
+   This supports the 18.10. retraction of finding 3; it does not reverse it.
+
+**Claim-check (2026-10-19, on belief 1).**
+- *Claim (post-hoc, not the pre-registered claim):* the −0.150 is a random-CV artefact: ranking each whole cohort before
+  the split ties a cohort's training and test patients together, and with shares
+  from 19 % to 80 % bacterial this puts each hospital's test patients on a
+  shifted scale, so the cross-hospital pairs fail.
+- *Measured:* same-hospital pairs 0.954 vs cross-hospital 0.680 (E1); test
+  patients ranked against training patients only: 0.915 (E3); equal shares
+  +0.066, own shares at the same sizes −0.118 (E2); held-out side unchanged
+  (+0.000, E4); almost fixed train + test average of −1.12 to −1.18 (mirror,
+  exploratory).
+- *Rivals and their controls:* held-out number inflated by transduction, killed
+  by E4. "Only fewer patients", killed by E2b. A bug or unfinished fit, killed
+  by E0 and the iteration counts. Ranking arithmetic alone (my PLAN claim),
+  killed by E3. The main effect has no rival left. A smaller second effect
+  remains: under training-only ranking (E3) cross-hospital pairs still score
+  below same-hospital pairs (0.903 vs 0.955), probably the class-balance ranking
+  arithmetic; it is not tested separately. The step-by-step wording (the almost
+  fixed total) rests on a table I added after seeing data.
+- *Judge:* thresholds committed before the run (cc7ba64). No outside judge yet,
+  so this is **self-assessed**. It fails if a blind re-run of
+  `python run_gap_diagnostics.py` from `data/` gives a different verdict for any
+  P1-P5.
+
+**Stays unverified.**
+- No outside judge yet (above).
+- One random-CV fold seed (0), as in the files on record. E2 varies the patients
+  (10 subsets) but not the fold seed.
+- Labels of GSE60244, GSE40396 and GSE6269 are still unverified (condition 2),
+  and every number here inherits that.
+- Why LightGBM is hit less: inferred. A tree model is not a weighted sum, so the
+  total is not fixed (its train + test averages differ by hospital in the mirror
+  file), but this was not tested further.
+- Under E3 ranking a smaller cross-hospital penalty is left (0.903 vs 0.955):
+  inside each hospital the class averages still slide with the bacterial share
+  (the PLAN's ranking-arithmetic idea, a small effect). Not tested separately.
+
+**Open for the author (nothing decided alone).**
+- Whether condition 3 counts as met; then the CORE §6 line "the negative
+  logistic gap is unexplained" can be updated (CORE.md was not touched).
+- `run_pipeline.py --rank-normalize` still ranks before the split. Option A
+  (recommended): leave it; the file stays a documented artefact and its numbers
+  stay inside this repo. Option B: rank inside each random-CV fold (as in E3) and
+  re-run.
+- For condition 4: counting every hospital once (the way the held-out number
+  does) gives smaller raw gaps: logistic 0.053 instead of 0.069, LightGBM 0.105
+  instead of 0.131 (`results/gapdiag_cohorts.csv`). The gap stays positive
+  either way; which number the one-sentence answer uses is a reporting choice.
+- Merge `night/2026-10-19` into `master`.
+
+**Where it lives.** Results: `results/gapdiag_folds.csv` (E0/E1),
+`gapdiag_cohorts.csv`, `gapdiag_inductive.csv` (E3), `gapdiag_balance_folds.csv`
++ `gapdiag_balance_summary.csv` (E2), `gapdiag_splithalf.csv` (E4),
+`gapdiag_mirror.csv`, `run_gapdiag.json` (verdicts, versions, run times).
+Code: `src/gap_diagnostics.py`, `src/gap_experiments.py`,
+`run_gap_diagnostics.py`. Tests: `tests/test_gap_diagnostics.py` (16 new, each
+checked to go red on a broken version; suite 44 passed). Existing results files
+and `run_pipeline.py` are unchanged.
+
+**Next session.** CORE §7 order item 3: published class counts for GSE60244,
+GSE40396 and GSE6269 (condition 2, a literature lookup). Later: more fold seeds
+for a spread on every gap before quoting any number.
+
+## 2026-10-19 (night run) - published class counts, candidates only
+
+Two blind extractions of the published class counts for GSE60244, GSE40396 and GSE6269 are in `docs/published-counts-candidates.md`. They agree on every class count (GSE40396 and GSE6269 differ only in layout and in paper-total 144 vs GEO-total 143). Not yet in `config/cohorts.json`: The author checks against the papers first (CORE §2.2).
+
+## 2026-10-19 — Outside check (04:33)
+
+_Night run, branch `night/2026-10-19`. Written by Claude; the author is asleep and
+decided nothing in this entry._
+
+**Who checked.** A fresh agent that did not write the RESULT entry or the code.
+It re-ran everything in a separate copy of the repo. **Verdict: "partly".**
+
+**What it reproduced.** Identical numbers for E0-E4 and the mirror table. Its
+own re-implementation of E1, E3 and the held-out AUC agrees with ours to 4
+decimals. With 2 extra random-CV fold seeds the same pattern appears (our run
+had used only seed 0).
+
+**The 5 problems it found.**
+1. The headline gave a cause (training and test patients tied together because
+   each whole hospital is ranked before the split) that was NOT the
+   pre-registered cause. The PLAN named ranking arithmetic, and the PLAN's own
+   rule P4 killed it. The tied-together explanation is post-hoc, consistent
+   with E3 and the exploratory mirror table.
+2. "CORE §2 condition 3 is met" is the author's decision, not mine.
+3. "No rival is left standing for the main effect" went too far: under
+   training-only ranking (E3) a smaller cross-hospital penalty remains, and the
+   checker's regularisation probe agrees (cross-hospital pair AUC rises as C
+   drops from 0.05 to 0.00005 but never fully reaches the same-hospital level).
+4. "Fixed average score" is only almost fixed: pandas `rank(pct=True)` has a
+   mean of (n+1)/2n, which shifts a little with hospital size; the 5 hospitals'
+   train + test averages agree to within about 0.03-0.09 log-odds.
+5. Test gap: no test guarded E4's key column `auc_b_whole`. Replacing it with
+   the half-A AUC makes P5 "supported" for free (difference 0), and all 16 new
+   tests still passed.
+
+**Sentences changed in the RESULT entry above** (nothing else in it was
+touched; the old wording is in git, commit 8673d5e):
+- Heading: "the negative logistic gap is explained" → "a post-hoc explanation
+  for the negative logistic gap". A one-line note under the heading points here.
+- "In short": added "Post-hoc explanation, consistent with E3 and the
+  exploratory mirror table, and NOT the cause my PLAN pre-registered (P4 killed
+  that one)". (Problem 1)
+- E3 paragraph: "the cause is the ranking of test and training patients
+  together" → "the post-hoc explanation (not pre-registered) is the ranking
+  ...". (Problem 1)
+- Mirror paragraph: "the same average in every hospital" → "almost the same
+  average ... (a percentile rank averages (n+1)/2n, which shifts a little with
+  hospital size)"; "this fixes the average score" → "this almost fixes the
+  average score"; "the total is fixed (about −1.1 in every hospital)" → "the
+  total is almost fixed (−1.12 to −1.18 in every hospital)". (Problem 4)
+- Belief 1: "CORE §2 condition 3 is met by tests that were run" → "CORE §2
+  condition 3 is proposed as met, pending the author's decision"; "It is an
+  artefact ..." → "Post-hoc explanation (not pre-registered): it is an
+  artefact ...". (Problems 1, 2)
+- Belief 2: "the real cause is a transduction step" → "the post-hoc
+  explanation, consistent with E3 and the exploratory mirror table, is a
+  transduction step". (Problem 1)
+- Claim-check: "*Claim:*" → "*Claim (post-hoc, not the pre-registered
+  claim):*"; "fixed train + test average" → "almost fixed train + test
+  average"; "No rival is left standing for the main effect, but the
+  step-by-step wording (the fixed total) ..." → "The main effect has no rival
+  left. A smaller second effect remains: under training-only ranking (E3)
+  cross-hospital pairs still score below same-hospital pairs (0.903 vs 0.955),
+  probably the class-balance ranking arithmetic; it is not tested separately.
+  The step-by-step wording (the almost fixed total) ...". (Problems 1, 3, 4)
+- Not changed, now out of date: "No outside judge yet" (claim-check *Judge*
+  and "Stays unverified"). This entry is the outside judge; its verdict is
+  "partly", so the RESULT stays a proposal for the author.
+- Not changed (outside this file): the `score_mirror` docstring in
+  `src/gap_experiments.py` still says "sum to a fixed total". That is exact
+  only for equal-sized cohorts (as in the synthetic test); for the real
+  cohorts it is almost fixed.
+
+**Problem 5, fixed.** New test
+`test_split_half_whole_column_is_the_whole_cohort_auc_on_half_b` in
+`tests/test_gap_diagnostics.py` recomputes the whole-cohort AUC on half B on
+its own and checks that the two E4 columns really differ on the synthetic data.
+On a scratch copy with `auc_b_whole` replaced by the half-A AUC it fails
+(1 failed, 16 passed); on the real code the full suite passes (45 passed).
+
+**Labels (condition 2), one line.** Our own parse is now compared with the two
+blind count extractions in `docs/published-counts-candidates.md`, section
+"Comparison with our own parse": GSE60244 and GSE6269 (GPL96) match; GSE40396
+does NOT (our 35 viral include 13 afebrile virus-positive children the paper
+does not count as viral). The rule fix is the author's call; nothing was changed
+or re-run.
+
+**What we now believe.** The pair-split finding (E1) and the E2-E4 verdicts
+stand and were reproduced by an outside agent. The "why" is a post-hoc
+explanation, not a pre-registered result. Condition 3 is proposed as met,
+pending the author. All gap numbers still inherit the GSE40396 labels, which are
+probably wrong for 13 children.
+
+_Coordinator note, 2026-10-19 04:48: the `score_mirror` docstring listed above
+as "not changed" now says "almost fixed" too (commit below). The two "No
+outside judge yet" lines in the RESULT entry stay as written, because this
+entry already marks them out of date. A second fresh agent checked the three
+fix-up commits (79282d9, 6789346, d0601cc): verdict "holds"; its own break-it
+test turns only the new E4 test red; it re-counted GSE40396 from the GEO files
+(22 febrile virus-positive, 13 afebrile virus-positive, 22 virus-negative,
+8 febrile bacterial), so the label mismatch is confirmed._
+
+## 2026-10-19 — PLAN, pre-registered before any run: the seesaw test (CORE §2 condition 3)
+
+**Status.** Designed by two independent planner agents and merged by a critic agent (read-only, nothing ran). **Approved by the author 19.10.2026**, with one condition: the real run waits until their paper check (condition 2) is done and the GSE40396 label rule is fixed. Why a re-test at all: The author decided on 19.10. that the seesaw explanation in the RESULT entry above is post-hoc and must pass its own pre-registered test before condition 3 counts.
+
+**Claim.** Under --rank-normalize, each hospital (cohort) is ranked as a whole before random CV splits it. For any model that adds up one gene at a time, this makes the hospital's total score almost fixed. That part is algebra. It is a MANIPULATION CHECK, not evidence. The testable part, the seesaw: the model holds a hospital's training patients close to their labels, so that hospital's few test patients must take up the whole mismatch. Their push is about k times larger (k = number of folds). That push mis-sorts cross-hospital test pairs, and it is the MAIN reason why random-CV AUC falls below leave-one-cohort-out AUC for logistic regression. The class-balance ranking arithmetic is the fuel, not a separate cause. The seesaw is the step that multiplies it. Supported only if all 3 predictions pass on BOTH cohort sets (all 5 cohorts, and the 4 without GSE40396). One kill in either set = not supported, and condition 3 stays open.
+
+**Budget.** About 50 CPU-minutes, CPU only. Fold seeds 100-104 (the outside checker's extra seeds were 1 and 2, see its report of 19.10.; no clash).
+
+### P1-fold-count-lever (about 25 CPU-minutes)
+
+- **What it tests:** Concentration. A hospital's test patients carry about k times the push. So the EXTRA cross-hospital damage from whole-hospital ranking must grow with the fold count k. Plain class-balance arithmetic, label noise, hospital size and hospital biology do not depend on how the hospital is split, so they predict no change with k.
+- **Why it is new:** Every earlier run (E0-E4, the mirror table, the checker's 2 seeds, the checker's C probe) used k=5 only. Nobody has changed the train/test size ratio, and that ratio is the one number the seesaw ties its size to. The transform and the matrix stay exactly as on file. Only the split changes.
+- **Measurement:** Logistic L2 from make_models, with C rescaled per k so that the penalty per training patient matches the file: C_k = 0.04 * k/(k-1), which gives 0.08 at k=2, 0.05 at k=5 (the file value) and about 0.044 at k=10. k in {2, 5, 10}. Fold seeds 100-104 (stratified, as in random_splits). Arm W = whole-cohort ranks (rank_normalize_within_cohort, the file matrix). Arm I = training-only ranks (cohort_rank_inductive), on identical folds. Per fold, pair_auc gives same-cohort and cross-cohort pair AUC. Pairs are counted only inside one test fold (one model). Per seed, AUCs are pair-weighted over folds; then the mean is taken over the 5 seeds. D = same-pair AUC minus cross-pair AUC. Judged quantity: excess X(k) = D_W(k) - D_I(k). Mechanism readout: per cohort, the class-adjusted test offset o_g (for each class, the mean test log-odds in cohort g minus that class's mean over all test patients in the fold, averaged over the classes present), W minus I. It is regressed on (cohort bacterial share - pooled share). |S(k)| = absolute slope. Report only: D_I(k) on its own, the per-cohort training-side offset per k, k=5 W versus raw, and a fixed-C arm (C=0.05) at k=2 and 10 on seed 100. Run on both cohort sets. The 4-cohort set keeps the same 12,040 genes (per-cohort ranking does not depend on the other cohorts, so the other 4 cohorts' values do not change).
+- **PASS:** In BOTH cohort sets, all of these hold: X(5) > 0; X(2) <= 0.5 * X(5); X(10) >= X(5); |S(2)| < |S(5)| < |S(10)|.
+- **KILL:** In EITHER cohort set, any of these: X(5) <= 0; X(2) >= 0.8 * X(5) (the push factor drops from about 5 to about 2, but the excess barely shrinks); X(10) < X(2) (the excess does not grow with k). Anything between pass and kill = 'partial'. Partial counts as not passed.
+- **Rival it separates:** Class-balance ranking arithmetic WITHOUT concentration (predicts X flat in k). Regularisation as the driver (C is rescaled per k, and the fixed-C arm shows separately what C adds). 'A different training size just fits differently' (the I arm has the same training sizes at every k, and only X is judged). GSE40396 label noise and hospital size (neither depends on k; the 4-cohort set is judged too).
+
+### P2-mean-fixing-swap (about 12 CPU-minutes)
+
+- **What it tests:** Whether the damage comes from the 'fixed hospital mean' property itself, and not from something special about percentile ranks, or from any transform that reads the whole hospital. Each transform is run in two versions: fitted on the WHOLE hospital (ties test patients to training patients), and fitted on the hospital's TRAINING patients only (no tie). The seesaw predicts: centring each gene per hospital (this fixes the mean exactly, with no ranks) shows a large tie effect. Scaling each gene by the hospital's spread without centring (reads the whole hospital, but leaves the mean free) shows almost none.
+- **Why it is new:** Only rank transforms were ever run (raw, cohort rank, within-sample rank, training-only rank). No linear per-hospital transform has been run, and no 'reads the whole hospital but leaves the mean free' arm. Pairing each operation with its own training-only twin also removes E3's confound: E3 cut the tie AND changed the rank grid and reference set. Centring has no grid.
+- **Measurement:** Logistic L2, k=5, C=0.05, the same fold seeds 100-104, both cohort sets. StandardScaler stays inside the model pipeline, as now. Arms: center_whole (subtract each gene's mean over the whole hospital, before the split); center_train (subtract each gene's mean over that hospital's training patients in the fold; applied to its train and test rows; reads no test patient); scale_whole (divide each gene by its whole-hospital SD, no centring); scale_train (the same, with the SD from training patients only). Report only: zscore_whole and zscore_train (per-hospital z-score, a common batch correction). D is defined as in P1. Tie effects: Y_c = D(center_whole) - D(center_train); Y_s = D(scale_whole) - D(scale_train); X(5) is reused from P1. Treatment-applied gate, computed before any model is fitted: the median over genes of the spread across hospitals of each gene's whole-hospital mean must be <= 1e-9 after center_whole, and must be >= 0.1 times the raw value after scale_whole. If the gate fails, that arm is void: not judged, and the prediction is not passed.
+- **PASS:** In BOTH cohort sets: Y_c > 0; Y_c >= 0.5 * X(5); |Y_s| <= 0.25 * Y_c.
+- **KILL:** In EITHER cohort set: Y_c <= 0; or Y_c < 0.25 * X(5) (the effect does not carry over to an exact mean-fixing transform, so it is rank-specific); or Y_s >= 0.5 * Y_c (reading the whole hospital hurts even when the mean is left free: generic transduction, not mean-fixing). Anything between = partial.
+- **Rival it separates:** (1) 'A quirk of percentile ranks' (tail squashing, the (n+1)/2n wiggle, grid size): centring is linear and has no ranks. (2) 'Generic transduction: any transform that reads test patients ties them together': scale_whole reads the whole hospital but does not fix its mean. (3) 'E3 worked for another reason (re-ranking, reference size)': each pair compares the same operation with and without the tie, so nothing else changes.
+
+### P3-additive-trees (about 10 CPU-minutes)
+
+- **What it tests:** The fixed total holds for ANY model that adds up one-gene functions, not just a linear one. A LightGBM made of depth-1 trees (stumps) is gene-additive. The default LightGBM (15 leaves, gene interactions) is not. So the seesaw predicts: stumps get hit like logistic regression, and harder than the default LightGBM, even though stumps fit the training data LESS tightly. This is the seesaw's own answer to 'why is LightGBM hit less', and it is not compatible with 'logistic is hit because of its L2 penalty or its straight-line boundary'.
+- **Why it is new:** LightGBM was only ever run with its file settings. 'LightGBM is hit less because a tree is not a weighted sum' was inferred afterwards and never tested. No earlier run separated additivity from 'trees are robust' or 'trees fit less'.
+- **Measurement:** k=5, fold seeds 100-104, arms W and I as in P1, both cohort sets. Models: logistic (reuse P1's k=5 fits); LightGBM exactly as in make_models; LightGBM stumps (num_leaves=2, max_depth=1, everything else identical). Excess X_m = D_W - D_I per model. Algebra gate (computed in the W arm): spread across hospitals of the (train + test) mean score, divided by the pooled within-class SD of the scores. It must be <= 0.5 times the default LightGBM value for stumps AND for logistic. If not, the code is broken: stop, not interpretable. Fit gate: pinning P = slope of the per-hospital training-mean score on bacterial share, divided by the pooled within-class SD of the training scores. Gate passes if P_stumps >= 0.5 * P_lgbm_default. Fit gate failed = 'not interpretable', which counts as not passed and not as killed. Both gates are committed before the run and never relaxed.
+- **PASS:** In BOTH cohort sets, with both gates passed: X_stumps > 0; X_stumps >= 2 * max(X_lgbm_default, 0); X_stumps >= 0.5 * X_logistic.
+- **KILL:** In EITHER cohort set, with both gates passed: X_stumps <= X_lgbm_default (additive trees are hit no more than trees with interactions). Anything between = partial.
+- **Rival it separates:** 'LightGBM is hit less because trees fit training less, only use order, or are robust to shifts' (predicts stumps hit as little as or less than the default, because they fit less). 'Logistic is hit because of its L2 penalty or linear boundary' (stumps have neither, so it predicts no excess for stumps). 'Any model that memorises training is hit' (predicts the default LightGBM is hit at least as hard as stumps).
+
+### Controls, gates and fences
+
+- Reproduction gate first: new code at k=5, fold seed 0, C=0.05 must reproduce the logistic cohort_rank rows of results/gapdiag_folds.csv (W arm) and results/gapdiag_inductive.csv (I arm), auc_within and auc_cross, to 1e-9. If not: stop, nothing is judged, and the drift is logged.
+- Synthetic instrument check before any real data, built on _synthetic() from tests/test_gap_diagnostics.py. Positive control: shares 20/20/80/80 with whole-cohort ranks must give X(10) > X(2) > 0 and Y_c > 0. Negative control: all shares 50 % must give |X(k)| and |Y_c| below 0.25 times the positive-control X(5). If either fails, the real run is not started and the thresholds are not changed.
+- Treatment-applied gates (P2) and algebra and fit gates (P3), as written in each prediction. A failed gate makes the arm void or not interpretable. It never counts as a pass.
+- Training-only twins (I arm, center_train, scale_train) on identical folds and training sizes, so every judged difference is the train/test tie alone.
+- Regularisation: C is rescaled per k in P1, and a fixed-C arm is reported. Stumps in P3 have no L2 penalty.
+- No logistic fit may stop at its 3,000-iteration cap. Process CPU time is recorded per part in a run JSON.
+- Every prediction runs on all 5 cohorts AND on the 4 without GSE40396, with the same 12,040 genes. Supported only if supported in both. A kill in either set is reported as 'not supported', naming the set.
+- Tests in a new tests/test_seesaw.py, each checked to go red on a deliberately broken copy: (a) the fold runner really uses k folds of size about n/k, and C_k follows the formula (red if k is ignored or C stays fixed); (b) cross pairs are counted only inside one fold (red if pooled across folds with per-fold score offsets); (c) center_whole gives exact zero cohort means, and center_train / scale_train output is unchanged when one test row is perturbed (red if switched to whole-cohort statistics); (d) scale_whole gives cohort SD 1 and unequal cohort means; (e) on equal-size synthetic cohorts with whole-cohort ranks, stump cohort totals match to 1e-9 and 15-leaf totals do not (red if the stumps silently use the default settings); (f) adding a constant to one cohort's test scores moves o_g by that constant and leaves the same-cohort pair AUC unchanged; (g) an --evaluate-only verdict function applies the pass/kill/partial rules to a hand-made table (red if any threshold is flipped).
+- Pre-registration: a dated PLAN entry in LABBOOK.md with every threshold, the seeds, the C_k formula, the gates and the fallback cut. It is committed on a feature branch (the repo is on master now; CORE section 7 forbids committing to master without the author) BEFORE any real-data run. The commit hash is written into the new runner's output JSON. A timing probe (one fold, one seed) runs only after that commit.
+- Fold seeds 100-104 are fixed now. The checker's 2 extra seeds are NOT recorded in LABBOOK (it only says '2 extra random-CV fold seeds'). If the checker's transcript shows that it used any of 100-104, switch to 200-204 BEFORE the commit, never after seeing numbers.
+- Pre-registered fallback: if the timing probe projects more than 60 CPU-minutes, fold seeds go from 5 to 3 (100-102) for every part. This is decided now, not after the probe.
+- Fences: new files only (src/seesaw.py, run_seesaw_test.py, tests/test_seesaw.py, results/seesaw_*.csv). run_pipeline.py, config/cohorts.json and the existing results files stay untouched. No --fetch, no new cohorts, no RNA-seq, no gene selection anywhere (all 12,040 genes, StandardScaler inside the fold), CPU only.
+- Wording fence: every whole-cohort arm is labelled a 'transductive diagnostic of a random-CV artefact'. None of it is called generalisation, leave-one-cohort-out is not judged here, and no rank-normalised AUC number leaves the repo.
+- Logistic regression and stumps are the judged models. The default LightGBM appears only as the comparison arm in P3.
+- Afterwards a fresh outside agent re-runs everything blind from data/ (the full run plus --evaluate-only) and must reach the same verdicts. Until then every result is 'self-assessed against pre-registered thresholds'.
+
+### Rivals still left
+
+- The seesaw is partly algebra for an additive model on mean-fixed features. These tests can show it is the DOMINANT cause of the deficit. That it exists is already guaranteed by algebra. A pass should be read as 'this algebra is what moves the AUC', not as a discovery.
+- Class-balance ranking arithmetic without concentration: the smaller cross-hospital penalty left under training-only ranking (D_I). It is measured at each k but not explained by any prediction. In this framing it is the fuel, and none of the tests removes it.
+- Hospital identity (fixed biology, age, severity, platform) is not retested. E2a (every hospital cut to 50/50 removes the effect) already speaks strongly against it as the main cause. Planner A's share-inversion test was dropped for that reason and for its small sizes (GSE40396 about 10 patients).
+- Leave-two-cohorts-out (planner B's P3) was not kept: its kill rule could be fired by real differences between two unseen hospitals, which is not the seesaw's rival. E3's re-ranking confound is handled by P2's centring pair instead.
+- C and k are not crossed. The lever depends on how tightly training patients are held, and only one rescaling rule is judged.
+- Other additive linear models (for example a linear SVM) and stratifying folds by cohort x class are not tested.
+- GSE40396 labels (13 afebrile virus-positive children) are still open (condition 2). The 4-cohort set guards the verdict, but the 5-cohort numbers inherit the label error.
+- Multiple comparisons: 3 predictions x 2 sets x several sub-rules. A pass needs every sub-rule in both sets, so a false kill is more likely than a false pass. This is deliberate, but there is no formal correction.
+- At k=10 a small hospital has about 4 test patients per fold (GSE40396 about 1 bacterial). Pair-weighting over folds and 5 seeds reduce the noise, and the kill rule uses X(10) < X(2), not X(10) < X(5), to guard against a floor effect. The |S(k)| ordering in the pass rule could still fail on noise.
+
+### Risks
+
+- P1 assumes the training-side push stays roughly the same across k. If the k=2 fits (half the data) hold training patients much less tightly even with rescaled C, P1 could come out partial for a reason that is not a rival. The per-k training offset is recorded to show this.
+- scale_whole can make hospitals' raw averages differ by a hospital-specific factor. Pairing it with scale_train cancels most of this, but if Y_s is large, read the treatment gate before blaming the seesaw.
+- Stumps may hold training patients too loosely. The fit gate turns this into 'not interpretable' instead of a false kill. That is also a way out, so the gate is committed first and never relaxed.
+- In the 4-cohort set the range of shares shrinks (about 24-80 % instead of 19-80 %), so every effect may get smaller. The thresholds are relative to guard against this, but 'partial' gets more likely.
+- The CPU estimate rests on the 19.10. timings (run_gapdiag.json: E1 about 156 s, E3 about 29 s). Stump and centring timings are not measured yet. The fallback is fixed in advance.
+- Default LightGBM can move slightly with the thread count. Fix n_jobs in the runner and record it.
+- The designers have seen E1-E4 and the mirror table. The predictions come from the algebra (the k factor, additivity, mean-fixing), not from new numbers, but the blind outside re-run is still essential.
+
+**Verdict rule.** Supported only if all 3 predictions pass on BOTH cohort sets (all 5, and the 4 without GSE40396). One kill in either set = not supported, condition 3 stays open. Partial counts as not passed.
+
+**In plain terms (the author's pick of two).** Each hospital gets one cake of fixed size to share among its patients, and a patient's slice is their 'bacterial' score. If the model gives the patients it learns from slices that fit them well, the few test patients of that hospital get whatever is left: crumbs in a mostly-bacterial hospital, far too much in a mostly-viral one. The test checks three things: the fewer test patients share the leftovers, the worse it must get; any rule that fixes the cake size must cause it, while a rule that leaves the size free must not; and if neither holds, the cake idea is wrong.
+
+**Pages.** Condition 3 in plain words: (`reports/2026-10-19-condition-3.html`). This plan: (`reports/2026-10-19-seesaw-test-plan.html`).
+
+## 2026-10-19 — PLAN, pre-registered before any re-run: GSE40396 label-rule fix + CORE §3 kill check
+
+**Question.** Is the 2026-10-10 raw gap a GSE40396 label artefact? (CORE §3 first kill criterion.)
+
+**Decision (the author, 19.10.).** The GSE40396 numbers in `docs/published-counts-candidates.md` were checked against the paper and are OK: febrile 22 viral (8 HHV-6, 8 adenovirus, 6 enterovirus) and 8 bacterial; afebrile 13 virus-positive and 22 virus-negative controls (Hu et al., PNAS 2013;110:12792-7, PMID 23858444). The 13 afebrile virus-positive children are DROPPED, as in the paper's own viral-vs-bacterial test.
+
+**Rule change (the rule, never the numbers).** Add `"fever: no"` to `label_rules.exclude` in `config/cohorts.json`. Exclusions run first. Checked before the change: the string `fever: no` occurs only in GSE40396 (35 samples = 13 afebrile virus-positive + 22 virus-negative controls, the controls already excluded); no other cohort has a `fever:` field. Expected parse: GSE40396 8 bacterial / 22 viral / 35 excluded; all other cohorts unchanged; 476 → 463 labelled samples. GSE40396 `expected_counts` = {viral 22, bacterial 8}, so `--review` must print "verified".
+
+**Kill rule (fixed now).** Under raw (the 2026-10-10 setting, `run_pipeline.py --train`): KILL if BOTH models' gap (random-CV mean AUC minus leave-one-cohort-out mean AUC) is ≤ 0.01 or negative. Old raw gaps: logistic 0.069, LightGBM 0.131. Rank-normalised and within-sample re-runs are reported, not judged. If KILL fires, the lab stops and the seesaw test does not run.
+
+## Claim-check (2026-10-19, before the run)
+Claim:      the raw cohort gap is not produced by the 13 mislabelled GSE40396 children.
+Measured:   the same raw pipeline, same seeds, with those 13 removed; one run, 5 folds per scheme.
+Rival:      fold noise — removing 13 samples reshuffles the random-CV folds, so the gap can move for that reason alone. Not killed by this run (one seed); it only matters if the new gap lands near the 0.01 line.
+Judge:      the threshold above, committed before the run — fails if both gaps are ≤ 0.01.
+
+## 2026-10-19 — RESULT: CORE §3 kill check after the GSE40396 rule fix — NOT killed
+
+**Question.** Is the 2026-10-10 raw gap a GSE40396 label artefact? (Pre-registered in the PLAN entry above, 9ca61f9.)
+
+**Run.** Rule fix committed in 6ad3881 (`"fever: no"` excluded; GSE40396 and GSE60244 now verified against their papers, GSE6269 still unverified). Then `run_pipeline.py --train`, `--train --rank-normalize`, `--train --within-sample-normalize`. 463 labelled samples (GSE40396 43 → 30), 12,040 genes, same seeds as before.
+
+**Measured** (mean AUC over 5 folds per scheme; gap = random-CV minus leave-one-cohort-out):
+
+| setting | model | random-CV old → new | leave-one-cohort-out old → new | gap old → new |
+|---|---|---|---|---|
+| raw (judged) | logistic L2 | 0.954 → 0.953 | 0.885 → 0.882 | 0.069 → **0.071** |
+| raw (judged) | LightGBM | 0.956 → 0.954 | 0.825 → 0.839 | 0.131 → **0.115** |
+| within-sample | logistic L2 | 0.961 → 0.959 | 0.900 → 0.900 | 0.061 → 0.059 |
+| within-sample | LightGBM | 0.954 → 0.954 | 0.857 → 0.887 | 0.097 → 0.067 |
+| cohort rank (transductive) | logistic L2 | 0.743 → 0.751 | 0.893 → 0.887 | −0.150 → −0.136 |
+| cohort rank (transductive) | LightGBM | 0.904 → 0.909 | 0.895 → 0.891 | 0.008 → 0.018 |
+
+**Verdict (pre-registered rule).** KILL needed both raw gaps ≤ 0.01. Measured 0.071 and 0.115, so **not killed**; the lab continues and the seesaw test may run.
+
+## Claim-check (2026-10-19, after the run)
+Claim:      the raw cohort gap is not produced by the 13 mislabelled GSE40396 children.
+Measured:   with the 13 removed, one run (5 folds each scheme), the raw gap is 0.071 (logistic) and 0.115 (LightGBM), against a kill line of 0.01 written down before the run.
+Rival:      fold noise from the reshuffled folds — inferred to be too small to matter here: 0.07 is about 7x the kill line, and per-fold AUCs on file move by a few hundredths. Not measured with extra seeds.
+Judge:      the pre-registered threshold (9ca61f9). Self-assessed otherwise; no outside agent re-ran this.
+
+**What we now believe.** The 2026-10-10 gap is not a GSE40396 label artefact. The LightGBM gap shrank by 0.016, and its within-sample gap by 0.030: part of LightGBM's held-out loss came from the 13 mislabelled children. The logistic numbers barely moved. The negative logistic gap under cohort ranking is still there (−0.136), so the seesaw test is still needed. Condition 2: 4 of 5 cohorts verified (GSE6269 waits for the author's check of the per-pathogen split, which comes from GEO titles, not the paper).
+
+**Where.** `results/summary_{raw,ranknorm,withinsample}.csv`, `results/run_*.json`, `results/label_review.md`.
+
+## 2026-10-19 — RESULT: seesaw test STOPPED at the synthetic instrument check (positive control failed)
+
+**Question.** Before any real-data run, does the instrument see the seesaw where we built it in? (PLAN 9daaf08, "Synthetic instrument check": the positive control must give X(10) > X(2) > 0 and Y_c > 0; the negative control must stay below 0.25 × the positive X(5). "If either fails, the real run is not started and the thresholds are not changed.")
+
+**Run.** Code e535f1d + bcb52b9 (`src/seesaw.py`, `src/seesaw_verdict.py`, `run_seesaw_test.py`; tests a-g each seen red on a broken copy, 10 mutations). `python run_seesaw_test.py --parts synthetic`: `_synthetic()` from tests/test_gap_diagnostics.py, 4 cohorts × 60 patients, 60 genes, fold seeds 100-104, the same runner and aggregation as the real run. Output in `results/run_seesaw.json` → `synthetic`.
+
+**Measured** (logistic, C_k rescaled; X = excess of whole-cohort ranks over training-only ranks in D = same-pair AUC − cross-pair AUC):
+
+| control | X(2) | X(5) | X(10) | Y_c | pre-registered check |
+|---|---|---|---|---|---|
+| positive (shares 20/20/80/80) | 0.082 | 0.084 | 0.079 | 0.077 | X(10) > X(2) > 0 and Y_c > 0 → **FAIL** (X(10) < X(2)) |
+| negative (all 50 %) | −0.002 | −0.000 | −0.001 | −0.000 | all \|·\| < 0.25 × 0.084 → pass |
+
+Report-only details from the same positive control (seeds 100-104): D_W ≈ 0.22 and D_I ≈ 0.13-0.14 at every k; D_raw = −0.005. |S(k)| = 0.95, 0.89, 0.77 for k = 2, 5, 10 (falling, not rising). Per-cohort offsets: in the W arm the training offset and the test offset have the SAME sign and similar size at every k (for example cohort C0, 20 % bacterial, k=5: o_train +1.11, o_test +1.29). The I arm shows the same pattern, slightly smaller.
+
+**Verdict (pre-registered rule).** The positive control failed, so the real-data run is NOT started and no threshold is changed. Condition 3 stays open.
+
+## Claim-check (2026-10-19)
+Claim:      the seesaw instrument cannot confirm its k-lever even where the effect is built in.
+Measured:   on synthetic data with a known class-share imbalance, the excess X is flat in k (0.082 / 0.084 / 0.079), and training and test offsets point the same way.
+Rival:      a bug in the new runner. Against it (inferred, not proven): the raw arm gives ~0, the negative control gives ~0, the training-only arm is lower than the whole-cohort arm, and tests a-g (k really used, C_k, pairs inside one fold, train-only twins read no test row) each go red on a broken copy. Not yet checked by anyone else.
+Judge:      the pre-registered positive-control rule (9daaf08). Self-assessed otherwise.
+
+**What we now believe (inferred).** On the synthetic data, whole-cohort ranking does add cross-cohort damage (X ≈ 0.08), and centring each cohort's genes on the whole cohort does too (Y_c ≈ 0.08). But the damage does not grow when the test share shrinks, and the training patients carry the same cohort shift as the test patients. That is not the seesaw as written ("training held close, the few test patients take k times the push"). It looks more like a shift shared by the whole cohort, which a cross-cohort pair sees and a same-cohort pair does not. This is a reading of one synthetic design, not a tested claim. Next step needs the author: see the options sent to the author.
+
+**Where.** `results/run_seesaw.json` (synthetic block), code `src/seesaw.py`, `src/seesaw_verdict.py`, `run_seesaw_test.py`, `tests/test_seesaw.py`.
+
+## 2026-10-19 — gap diagnostics re-based on the new labels (463 samples)
+
+**Run.** `python run_gap_diagnostics.py` (all parts: E1 137 s, E3 26 s, E4 43 s, E2a 864 s, E2b 892 s, mirror 58 s), so every committed `results/gapdiag_*` file uses the fixed GSE40396 labels.
+
+**Measured.** No verdict word changed against the 476-sample run (E0 reproduced; P1 supported; LightGBM direction as predicted; P4 KILLED; P1b supported; iteration cap 0). The numbers moved slightly: under cohort ranking, logistic same-cohort / cross-cohort / pooled AUC 0.954 / 0.680 / 0.743 → 0.956 / 0.686 / 0.751; inductive pooled 0.916 → 0.919; P2 gap mean 0.066 → 0.069; P3 gap mean −0.118 → −0.113.
+
+**Belief.** Unchanged. These are the 19.10. post-hoc diagnostics on the corrected labels. They are not the seesaw test, which is stopped (entry above).
+
+**Where.** `results/gapdiag_*.csv`, `results/run_gapdiag.json`.
+
+## 2026-10-19 — outside audit of the stopped seesaw test: NO BUG; the k-lever is not supported by its own positive control
+
+**Question.** Is the failed synthetic positive control (entry above) a bug, or a real property of the design? (the author's choice A.)
+
+**Run.** A fresh agent, given only the PLAN (9daaf08) and the code, worked read-only and blind to the RESULT entries. It reviewed the code against every plan definition and wrote its OWN minimal X(k) implementation. It then ran probes of its own choice.
+
+**Measured (by the auditor).**
+- **No bug** that could change the verdict. Two harmless differences: S(k) averages over folds and seeds before taking W − I, and the fixed-C/raw arms are separated from the judged arms only by a C filter (correct, but fragile).
+- Its own code matches the repo runner to 4 decimals. Positive control X(2/5/10) = 0.0825 / 0.0840 / 0.0792; negative control ≈ 0.
+- Probes (seeds 100-102):
+
+| probe | X(2) | X(5) | X(10) |
+|---|---|---|---|
+| 150 patients per cohort | 0.036 | 0.032 | 0.036 |
+| another data seed | 0.081 | 0.087 | 0.091 |
+| C = 10 | 0.055 | 0.085 | 0.084 |
+| 2,000 genes (more genes than patients, like the real data) | 0.37 | 0.44 | 0.44 |
+
+  With 2,000 genes, X rises from k=2 to k=5 but not from k=5 to k=10. The P1 kill rule would fire there too (X2 ≥ 0.8·X5).
+- Offsets: in every setting, the whole-cohort-arm training offsets and test offsets have the SAME sign (low-share cohorts +, high-share cohorts −). The W − I difference on the training side shrinks about as 1/(k−1) (−0.27, −0.06, −0.03), so the fixed cohort total is real algebra. But the training side absorbs it, and the test-side difference stays about +0.21 to +0.27 at every k.
+
+**Verdict.** **The seesaw k-lever is not supported by its own positive control.** No bug was found by an outside check. The pre-registered seesaw test is closed without a real-data run. Condition 3 stays open.
+
+**What we now believe (inferred).** The cross-cohort damage looks like a shared shift: every patient of a cohort, in training and in test alike, is moved in the same direction by an amount set by the cohort's class mix. This hurts only pairs from different cohorts. The seesaw amplification by k does not appear. A new pre-registered test of this reading is DRAFTED in `docs/2026-10-19-shared-shift-plan-DRAFT.md`. It is not approved, and nothing runs until the author approves it.
+
+## 2026-10-19 — PLAN, pre-registered before any run: the shared-shift test (CORE §2 condition 3)
+
+**Status.** Approved by the author 19.10.2026 (answer A), as drafted in dbd09f7. Text below copied unchanged from `docs/2026-10-19-shared-shift-plan-DRAFT.md` (minus its title and draft note). Plain-terms metaphor: not yet picked.
+
+### Claim
+
+Under per-cohort ranking, every patient of a cohort (training AND test) is moved
+in the same direction by an amount set by that cohort's class mix (low
+bacterial share → scores pushed up, high share → pushed down). A constant shift
+per cohort cannot change same-cohort pairs, but it mis-sorts cross-cohort pairs.
+That shared shift is the MAIN reason the logistic random-CV AUC under
+`--rank-normalize` falls below leave-one-cohort-out.
+
+Rival (the old seesaw): training patients held close, test patients pushed the
+other way. The two readings make OPPOSITE predictions about the sign of the
+test shift relative to the training shift. H1 uses exactly that.
+
+### Setup (shared by all predictions)
+
+Logistic L2 from make_models, k=5, C=0.05, fold seeds 100-104, both cohort sets
+(all 5, and the 4 without GSE40396), 12,040 genes, StandardScaler inside the
+fold. Arms: W (whole-cohort ranks), I (training-only ranks), raw. D = same-pair
+AUC − cross-pair AUC (pairs inside one fold only, pair-weighted, mean over
+seeds), as in `src/seesaw_verdict.pair_weighted`. Code reuse: `src/seesaw.py`
+(runner, offsets), new code only for the two new arms below.
+
+### H1 — the training shift predicts the test shift (sign + transfer)
+
+- **Measurement:** per fold and cohort, o_train and o_test (class-adjusted
+  offsets, as now). Arm "W+recentre": the W model's test scores of cohort g are
+  shifted by −o_train(g), which is estimated from TRAINING scores only. Judged
+  quantity R = share of the cross-pair damage that recentring removes:
+  R = (cross_recentred − cross_W) / (cross_raw − cross_W).
+- **PASS (both sets):** sign(o_test) = sign(o_train) for every cohort in the W
+  arm (mean over folds and seeds) AND R ≥ 0.5.
+- **KILL (either set):** R ≤ 0 (recentring with the training shift makes cross
+  pairs worse, which is the seesaw's sign).
+- Between = partial.
+
+### H2 — the class mix of the reference is the lever
+
+- **Measurement:** new inductive arm "I-balanced": each patient is ranked
+  against its cohort's TRAINING rows, re-weighted to 50 % bacterial / 50 % viral
+  (training labels only; no test row is read). Compared with I (same folds).
+- **PASS (both sets):** D(I-balanced) ≤ 0.5 · D(I) AND the absolute slope of
+  o_test on (share − pooled share) drops by ≥ 50 % against I.
+- **KILL (either set):** D(I-balanced) ≥ 0.9 · D(I).
+- Between = partial.
+- Why it is new: E2a balanced the cohorts by DROPPING patients (it changed the
+  data). H2 keeps every patient and changes only what they are ranked against.
+
+### H3 — no k-lever (the stopped prediction, now as a stated null)
+
+- **Measurement:** X(k) = D_W − D_I at k = 2, 5, 10, C_k rescaled, as in P1.
+- **PASS (both sets):** |X(10) − X(2)| ≤ 0.25 · X(5) and X(5) > 0.
+- **KILL (either set):** X(10) ≥ 1.5 · X(2) (the seesaw's growth reappears on
+  real data).
+- Between = partial.
+
+### Gates (before any real-data run, never relaxed)
+
+1. Synthetic instrument check on `_synthetic()` at **60 AND 2,000 genes**:
+   positive control (shares 20/20/80/80) must give H1 PASS and H2 PASS. Negative
+   control (all 50 %) must give |D_W − D_raw| and |D_I − D_raw| < 0.25 × the
+   positive-control value. If this fails: stop, do not change thresholds.
+2. Reproduction gate: the reused runner reproduces the seed-0 rows of
+   `results/gapdiag_folds.csv` / `gapdiag_inductive.csv` to 1e-9 (already true
+   by construction, re-checked).
+3. Tests that go red on broken code: I-balanced reads no test row; the reference
+   weights sum to equal class mass per cohort; recentring uses training scores
+   only (red if it uses test scores); the verdict function on a hand-made table.
+4. No logistic fit at its 3,000-iteration cap.
+
+### Verdict rule
+
+Supported only if H1, H2 and H3 all PASS in BOTH cohort sets. A kill in either
+set = not supported, and condition 3 stays open. Afterwards a blind outside agent
+re-runs from data/ and must reach the same verdicts.
+
+### Budget and fences
+
+About 25-30 CPU-minutes (P1-style k sweep ≈ 15, the rest ≈ 10). New files only
+(`src/shared_shift.py`, `run_shared_shift_test.py`, `tests/test_shared_shift.py`,
+`results/sharedshift_*`). No cohort, label or config change. No rank-normalised
+AUC leaves the repo; every whole-cohort arm is a transductive diagnostic.
+
+### Rivals still left
+
+- Cohort biology/platform that happens to line up with class share (5 cohorts
+  only; E2a speaks against it, but nothing here removes it).
+- The negative gap could still be partly class-weighting arithmetic in
+  `class_weight="balanced"`; not varied here.
+- 5 cohorts = 5 points for any slope; the sign rule in H1 is per cohort, but
+  the slope in H2 is fragile.
+- Designers have seen the synthetic and audit numbers (not real-data seesaw
+  numbers, which were never run). The 10-seed sweep is a
+  separate flow job and is not used to set any threshold here.
+
+## 2026-10-19 — RESULT: shared-shift test STOPPED at its synthetic gate (fails at 2,000 genes); real run refused
+
+**Question.** Before any real-data run: does the instrument see the shared shift where we built it in, at 60 AND at 2,000 genes? (PLAN 2fd8865, gate 1.)
+
+**Run.** Code 665db45 + fix 61d154a (both repro gates filtered on `DataFrame.transform`, the method, instead of the column, so they matched 0 rows. Neither gate had produced a number before; nothing on file is affected). Guards: 19 new tests, 5 mutations each seen red; 94 tests green. Added before any run: a VOID band when the reference damage is ≤ 0 (cross_raw ≤ cross_W for H1, D(I) ≤ 0 for H2). It did not fire anywhere below. `python run_shared_shift_test.py --parts synthetic repro`. Output: `results/run_sharedshift.json`.
+
+**Measured.**
+- Reproduction gate: `run_k5` at fold seed 0 reproduces the logistic W and I rows on file, max difference 1.1e-16 → **pass**.
+- Synthetic gate (positive control shares 20/20/80/80, negative control all 50 %, seeds 100-104):
+
+| genes | H1 (R, signs agree) | H2 (D_I → D_I_bal; slope I → I_bal) | H3 (X2 / X5 / X10) | negative control | gate |
+|---|---|---|---|---|---|
+| 60 | PASS (R = 0.90, yes) | PASS (0.143 → −0.004; 3.0 → 0.5) | PASS (0.082 / 0.084 / 0.079) | pass | pass |
+| 2,000 | **PARTIAL** (R = 0.006, yes) | **PARTIAL** (0.122 → −0.097; 1.4 → **6.1**) | PASS (0.41 / 0.46 / 0.46) | pass | **FAIL** |
+
+  At 2,000 genes the whole-cohort arm is hit far harder (cross-pair AUC 0.19, against 0.91 raw). Recentring each cohort by its training offset leaves it at 0.20.
+
+**Verdict (pre-registered rule).** The positive control must give H1 PASS and H2 PASS at both gene counts. At 2,000 genes it gives PARTIAL and PARTIAL, so the gate fails. The real-data run is refused, and no threshold is changed. Condition 3 stays open.
+
+## Claim-check (2026-10-19)
+Claim:      the shared-shift instrument does not confirm its own reading in the many-genes regime.
+Measured:   on synthetic data with 2,000 genes (more genes than patients, like the real 12,040 × 463), a per-cohort constant correction learned on training scores removes ~1 % of the cross-pair damage. At 60 genes it removes 90 %.
+Rival:      a bug specific to 2,000 genes. Against it (inferred): the same code passes at 60 genes, the negative control is clean at both sizes, and the reproduction gate matches the file to 1e-16. Not checked by an outside agent.
+Judge:      the pre-registered gate rule (2fd8865). Self-assessed otherwise.
+
+**What we now believe (inferred, not tested).** With few genes, whole-cohort ranking acts like one constant shift per cohort: same sign for training and test, set by the class mix, and removable. In a viral-heavy cohort every patient looks MORE bacterial (positive offset); this direction is checked against our own offset tables. With more genes than patients the damage is much larger and is NOT a constant per-cohort shift: the model seems to use the ranking pattern itself, which separates training from test patients, not just cohorts. Neither the seesaw nor the shared-shift reading explains the regime the real data live in. Condition 3 ("explain the negative logistic gap by a test that was run") is still open. The honest summary for condition 4 may have to be: "rank-normalised random-CV numbers are a transductive artefact whose mechanism we characterised on synthetic data but did not pin down on the real cohorts".
+
+**Where.** `results/run_sharedshift.json`; code `src/shared_shift.py`, `src/shared_shift_verdict.py`, `run_shared_shift_test.py`, `tests/test_shared_shift.py`.
+
+## 2026-10-19 — DECISION (the author): condition 3 rewritten; branch merged into master
+
+**What changed.** CORE §2 condition 3 now reads: "the rank-normalised random-CV number is a transductive artefact: shown on synthetic data, mechanism on the real cohorts unresolved" (dated, marked as the author's decision; the old wording is kept in CORE). The author gave their CORE §7 OK to merge `plan/seesaw-test` into `master` (local repo, no remote).
+
+**Status of CORE §2.** 1 met (within-sample control). 2: 4 of 5 cohorts verified (GSE6269 waits for the author's own check of the per-pathogen split). 3: met in its rewritten form. 4 (the one answer sentence, raw + within-sample numbers only, claim-check first): NOT yet written → next session.
+
+## 2026-10-20 — RESULT: CORE §2 condition 4, the one answer sentence (the author's call)
+
+> **SUPERSEDED 2026-10-22** by the 458-array restatement in the entry "RESULT: within-sample 10-seed sweep" at the bottom of this file. The numbers below are the 463-array, single-run ones and are kept for history only.
+
+**Question (§1).** Of a within-cohort (random-CV) AUC, how much survives a hospital cohort the model never saw?
+
+**Sources, nothing else.** `results/summary_raw.csv` and `results/summary_withinsample.csv` (commit 36cecca, run date 2026-10-19, 463 samples, 12,040 shared genes, 5 cohorts, after the GSE40396 rule fix). Rank-normalised numbers are NOT used (condition 3: transductive artefact). Means over 5 folds / 5 held-out cohorts; no seed sweep is on file, so these are single-run numbers.
+
+## Claim-check (2026-10-20)
+Claim:      most of the within-cohort AUC survives a held-out cohort, but a real gap of 0.06-0.12 AUC remains, and the leak-free within-sample transform shrinks it without removing it.
+Measured:   mean AUC random-CV vs leave-one-cohort-out, both models, raw and within-sample scales, one run each (files above).
+Rival:      (a) the gap is a label-parsing artefact — against it: 4/5 cohorts verified against published counts, kill check 19.10. not triggered (gaps 0.071/0.115 vs pre-registered line 0.01); GSE6269 still unverified (the author's own check pending). (b) single-run noise — not ruled out, the 10-seed sweep never ran; the spread across the 5 held-out cohorts (raw logistic 0.82-0.94, raw LightGBM 0.70-0.89) is the only variance on file. (c) co-infection/non-infectious exclusions flatter both numbers equally (README).
+Judge:      none outside the lab yet. The numbers are machine-written CSVs; the sentence below is self-written. A blind outside re-read of this entry against the two CSVs is the open step.
+
+**The sentence.**
+Of a random-CV AUC of 0.95 (logistic L2 0.953, LightGBM 0.954), **0.88 survives a held-out cohort on the raw scale** (logistic 0.882, gap 0.071; LightGBM 0.839, gap 0.115) and **0.90 survives under within-sample normalisation** (logistic 0.900, gap 0.059; LightGBM 0.887, gap 0.067) — every number from `results/summary_raw.csv` and `results/summary_withinsample.csv` at commit 36cecca.
+
+**Plain words.** Roughly 7 to 12 AUC points of the headline number are hospital-specific structure, not biology the model carries to the next hospital. Normalising each patient against their own genes only (legal at the bedside) gives back about one to five of those points; the rest stays. The simpler model loses less.
+
+**Status of CORE §2.** 1 met · 2 four of five (GSE6269 open) · 3 met in its rewritten form · **4 written here**. Open: GSE6269 per-pathogen check (the author), seed sweep (would turn "single run" into "reproducible"), an outside re-read of this entry.
+
+**Where.** This entry; branch `cond4-sentence` (no master commit without the author, CORE §7).
+
+## 2026-10-20 — Blind re-read of condition 4
+
+**Question.** Does the condition-4 sentence (entry above, merge 74cbb73) say what the two CSVs say? An outside reader who has not seen the sentence writes its own from the tables; we compare number by number.
+
+**Design.** A fresh sub-agent with no file access got ONLY the §1 question, the plain meaning of the columns, and the full text of `results/summary_raw.csv` and `results/summary_withinsample.csv` (commit 36cecca). It was not shown the LABBOOK sentence. Note the limit: same model family as the author, so this is an independent *read*, not an independent *judge* of whether the experiment is sound.
+
+**Blind agent's sentence, verbatim.** "Of a random-CV AUC of 0.954 (lightgbm) and 0.953 (logistic_l2), 0.839 and 0.882 survive a held-out cohort (raw) and 0.887 and 0.900 survive (within-sample normalised), so the gap is 0.115 (lightgbm) and 0.071 (logistic_l2) raw, shrinking to 0.067 and 0.059 within-sample."
+
+**Number by number.**
+| number | LABBOOK sentence | blind read | verdict |
+|---|---|---|---|
+| random-CV (raw) logistic / LightGBM | 0.953 / 0.954 | 0.953 / 0.954 | match |
+| raw held-out logistic / LightGBM | 0.882 / 0.839 | 0.882 / 0.839 | match |
+| raw gap logistic / LightGBM | 0.071 / 0.115 | 0.071 / 0.115 | match |
+| within-sample held-out logistic / LightGBM | 0.900 / 0.887 | 0.900 / 0.887 | match |
+| within-sample gap logistic / LightGBM | 0.059 / 0.067 | 0.059 / 0.067 | match |
+Headline roundings (0.95 → 0.88 raw, 0.90 within-sample) also agree with the CSVs (logistic held-out values).
+
+**Claim-check.** Claim: the sentence's numbers are what the files say. Measured: 10 of 10 numbers match a fresh read. Rival: the blind agent just copied the same obvious cells — a weak test for a transcription claim, which is all this checks. Judge: the CSVs themselves; not a judge of the science (single run, no seed sweep, GSE6269 labels still open — unchanged).
+
+**One wording caveat (not a wrong number).** The within-sample gaps (0.059 / 0.067) are measured against the within-sample random-CV AUCs (0.959 logistic / 0.954 LightGBM), not the raw 0.953 / 0.954 the sentence quotes. 0.953 − 0.900 would be 0.053, not 0.059. The sentence is correct but a reader could mis-subtract; the sentence was NOT changed (only a wrong number would change it).
+
+**Verdict: holds.** No number corrected. Status of CORE §2 unchanged (GSE6269 open).
+
+**Where.** This entry, commit `ebb8c8e`; branch `a side branch` (not merged to master; the author's call).
+
+## 2026-10-21 — RESULT: GSE6269 labels verified (CORE §2 condition 2 → 5 of 5, AI-verified)
+
+**Question.** Do our GSE6269 (GPL96) labels match the published per-pathogen counts? Last open item of condition 2.
+
+**Who checked.** Claude (AI), not a human. First check 2026-10-20, re-read 2026-10-21 from the PMC article page (the Europe PMC full-text XML is not open access; the PMC HTML page was read). The author's decision (21.10.): this counts as 5 of 5, labelled "AI-verified, not human".
+
+**What was compared.** Ramilo et al., Blood 2007, PMID 17105821, [doi:10.1182/blood-2006-02-002477](https://doi.org/10.1182/blood-2006-02-002477), PMC1801073:
+- Methods, "Patient information": 29 E coli, 50 S aureus, 16 S pneumoniae, 36 influenza A, 7 healthy (all sets, all platforms).
+- Table 1 (set 1, training set) footnote: E coli n = 29, S aureus n = 31, S pneumoniae n = 13, influenza A n = 18 → **73 bacterial, 18 viral**.
+- Results: "These data, obtained from a total of 91 patients, were generated using Affymetrix U133A GeneChips" (U133A = GPL96, the platform we keep). 73 + 18 = 91.
+- GEO "Overall design": 143 samples in the series (144 minus PBMC_Healthy_INF295, no CEL file).
+
+**Measured.** `python run_pipeline.py --review`: GSE6269 parsed bacterial 73, viral 18, excluded 6 (the healthy controls; 7 minus the missing INF295) → "verified against published counts". All five cohorts now print verified (`results/label_review.md`).
+
+**What we now believe.** Condition 2 holds, with the honest label: the published count check for GSE6269 was done by an AI reading the paper. The README "what I checked vs what AI did" section must list it under AI. Kill criterion 1 (label artefact) is not triggered: the parse was not changed, it already matched.
+
+**Where.** `config/cohorts.json` (GSE6269 `expected_counts` + `source_of_expected`, which names who checked), `results/label_review.md`; branch `v1/release`.
+
+## 2026-10-21 — PLAN: 10-seed sweep of the raw cohort gap (run by the author's decision)
+
+**Question.** Is the raw gap (logistic 0.071, LightGBM 0.115; `results/summary_raw.csv`, fold seed 0) a fold-seed accident? CORE §6 calls the gap "reproducible" but every run used one random-CV fold seed.
+
+**Design (fixed before the run).**
+- Data: the 463-sample, 12,040-gene raw matrix (after the GSE40396 rule fix; labels now 5/5 verified). Raw scale only, no rank normalisation, no within-sample transform.
+- Sweep: random-CV fold seeds **200-209** (0, 1, 2 and 100-104 were used before). LightGBM model seed **fixed at 0**. Both models (logistic L2, LightGBM), same hyperparameters as `src/train.py`.
+- Leave-one-cohort-out has **no fold randomness** (one fold per cohort). With a fixed model seed it must be identical in all 10 rows; the script stops if it is not.
+- Side check (the card's control): LightGBM LOCO with **model seeds 200-209** at fold seed 0, to show how much LightGBM's own randomness moves the held-out number. Logistic is deterministic, so it has no such check.
+- Reproduction gate first: fold seed 0 + model seed 0 must reproduce `results/summary_raw.csv` to 1e-9, else stop.
+- Outputs: `results/seedsweep_raw.csv` (20 rows = 10 seeds x 2 models: random-CV AUC, LOCO AUC, gap), `results/seedsweep_raw_summary.csv` (mean/SD/min/max of the gap per model + seeds at or below the kill line), `results/seedsweep_lgbm_modelseed.csv`, `results/run_seedsweep.json`.
+- **Kill rule (pre-registered):** if the gap is ≤ 0.01 for BOTH models in a majority (≥ 6) of the 10 seeds, the 0.071 / 0.115 numbers were a seed artefact → stop, write it down, report to the author (CORE §3 first kill criterion, repeated across seeds).
+- The RESULT entry reports the full spread, the old single-seed values beside it, and whether each model's gap stays above 0.01 in all 10 seeds.
+
+**Code.** `run_seed_sweep.py`; `src/train.py` gains `seed` (fold seed) and `model_seed` arguments (defaults 0 = old behaviour). Guards: `tests/test_seed_sweep.py`, 6 tests; 4 mutations seen red (seed dropped, model seed ignored, kill rule any() instead of all(), half counted as majority). 100 tests green.
+
+**Cost.** CPU only, € 0, est. 10-30 CPU-min. Free RAM at plan time: 15 GB (line: 4 GB).
+
+## 2026-10-21 — Three outside CODE reviews: every finding, fixed or rejected
+
+**Question.** Does anyone outside the author find a bug in the code that would change a reported number? (v1 step 3, the author's decision.)
+
+**Design.** One identical input for all three reviewers: `reports/review/2026-10-21/bundle.txt` = 29 files (src, run_*, tests, config, requirements) from commit d912d21, code and config only (no data, no results, no LABBOOK/README prose); hashes in `manifest.md`; instructions in `prompt.md` (leakage, labels, splits, AUC, harmonisation, tests that cannot fail; each finding with severity, failure scenario, red test).
+- **gpt-6-astra** (OpenAI Responses API, reasoning high), via a separate review script (not included in this copy). **CORE §7 exception:** §7 says never "use a paid API"; the author OK'd this one call for v1 (decision, 21.10.). Only code went out; 41,937 input / 14,956 output tokens. → `astra.md`
+- **Gemini** `gemini-3.1-pro-preview` via a separate API script (not included in this copy). → `gemini.json` / `gemini.md`
+- **Blind fresh Claude agent**, told to read only `prompt.md` + `bundle.txt` (same model family as the author: an independent read, not an independent family). → `blind-claude.md`
+
+Verdict lines: astra HIGH-FOUND (3 HIGH), Gemini HIGH-FOUND (4 HIGH), blind Claude NO-HIGH. Every reviewer-HIGH was checked against the real data before it was accepted.
+
+**Findings, merged (A = astra, G = Gemini, C = blind Claude; H/M/L = their severity).** "Fixed" = code changed + a test that goes red when the fix is undone (10 mutations, each seen red; 108 tests green).
+
+| # | finding | who | checked on the real data | outcome |
+|---|---|---|---|---|
+| 1 | Published-count MISMATCH is only a note, training continues | A3 H, G3 H, C1 M | all 5 cohorts verified, no MISMATCH → no number changed | **fixed**: `labels.refuse_mismatches`, hard stop in `cmd_train` and `load_matrix` |
+| 2 | Imputation by whole-cohort gene mean before any split (and 0.0 fill) | A2 H, G4 H, C2 M | **0 NaN cells** in the model matrix, all 5 cohorts → the fill never fires | **fixed (on record)**: `build_matrix` writes the imputed-cell count into its notes, so a future NaN is visible |
+| 3 | Highest-mean probe per gene chosen over every patient, test patients included | A1 H, G4 H, C6 L | label-free, but an unsupervised choice that reads test X | **control run** (PLAN below): lowest-probe-id rule that reads no value, `to_symbols(collapse="first")` |
+| 4 | `prefer_platform` not enforced (combined matrix tried first; fallback to another platform; "GPL96" substring of "GPL961"; cache not checked) | G1 H, A6 M, C5 L | GSE6269 parsed as GPL96, 97 samples (not 143); GEO has no combined matrix for it → no number changed | **fixed**: preferred platform skips the combined file, exact id match, no fallback; `_load_all` refuses a parsed platform that differs from config |
+| 5 | "influenza" rule catches *Haemophilus influenzae* (a bacterium) as viral | G2 H | 0 samples mention haemophilus/influenzae → no number changed | **fixed**: "haemophilus", "influenzae" added to the bacterial rules (checked before viral); `--review` unchanged, 5/5 |
+| 6 | Negated text ("bacterial culture: negative", "co-infection: no") matched as a diagnosis | A7 M, C1 M | 0 usable samples contain "negative" or "culture"; class counts match the papers in 5/5 | **rejected for v1** (no such string in the data); stays a known limit of substring rules |
+| 7 | X / y / cohort row alignment not checked in the training path | A8 M | `build_matrix` builds all three from one index | **fixed**: `run_both_schemes` refuses unequal indexes |
+| 8 | Undefined-AUC folds silently dropped; incomplete studies still write headline files | A9 M, C4 L | `summary_raw.csv` folds = 5 for every model and scheme | **fixed in the sweep** (`sweep_rows` refuses incomplete folds; the LightGBM side check refuses a None AUC); headline files already carry the fold count |
+| 9 | Logistic `ConvergenceWarning` suppressed | A10 M | `results/gapdiag_folds.csv` raw: max n_iter = 160 of 3,000 | **rejected** (no fit reached the cap) |
+| 10 | Repro gates fail open on NaN / missing rows | A11 M | seed-sweep gate gave 1.1e-16 | **fixed in the seed sweep** (non-finite or model-set mismatch = fail); the seesaw / shared-shift gates belong to stopped tests, not v1 claims → left |
+| 11 | `--parts probe` overwrites seesaw results (`startswith("p")`) | A12 M | real bug in a stopped test; the files on disk were not overwritten this way | **fixed** (explicit p1/p2/p3); no test (stopped experiment, one-line change) |
+| 12 | Log2 decision from one series maximum (> 100) | A5 M, C6 L | series maxima 15.2 / 34,377 / 30,191 / 15.4 / 103,612: far from 100 either way | **rejected** (no decision is near the threshold) |
+| 13 | Gene eligibility depends on all-NaN probes in held-out data | A4 M | a per-series deposit property, no label or value use; 0 NaN in the shared genes | **rejected**, documented as how "shared genes" is defined |
+| 14 | The gap mixes estimands: random-CV pools cross-cohort pairs; LOCO is an unweighted mean of 5 cohorts | C3 M | `gapdiag_folds.csv` / `gapdiag_cohorts.csv`, raw, fold seed 0 (logistic / LightGBM): random-CV within-cohort-pair AUC 0.954 / 0.951 vs pooled 0.953 / 0.954; size-weighted LOCO 0.896 / 0.847 vs unweighted 0.882 / 0.839; per-cohort paired gap (in-cohort random-CV minus LOCO) mean 0.052 / 0.089, **positive in all 5 cohorts for both models** | **accepted as a wording caveat**: the README reports the paired per-cohort gap beside the headline gap |
+| 15 | Smoke test passes a constant-0.5 scorer; LightGBM seed test trivial without lightgbm; NaN-fill test checks only "no NaN" | A13 L, C8 L | — | **fixed**: smoke test requires random-CV > 0.8; `importorskip`; the fill must equal 0.5 |
+| 16 | LightGBM `subsample=0.8` is inert without `subsample_freq` | C8 L | true (LightGBM bagging needs freq > 0) | **not changed** (it would change the headline model); the model-seed side check therefore measures `colsample_bytree` randomness only |
+| 17 | `cohort_rank_inductive` scales train rank/n vs test rank/(n+1) | C7 L | diagnostic arms of stopped tests only | **rejected for v1** (not on the headline path) |
+
+**Process note.** The seed sweep (PLAN entry above) was already running on the code of d912d21 when these fixes were made; the running process had imported that code. Its `run_seedsweep.json` `commit` field is read at write time and so names a later state. None of the fixes changes the raw numbers it measures (no MISMATCH, 0 NaN cells, GPL96, aligned rows, 5/5 folds).
+
+**What we now believe.** No reviewer found a bug that changes a number on file. Every reviewer-HIGH, checked against the data, either never fires on these five cohorts or is now a hard stop. The one open HIGH is #3, the probe choice, which needs a measurement, not an argument.
+
+## 2026-10-21 — PLAN: probe-choice control (review finding #3)
+
+**Question.** Does the headline gap depend on choosing each gene's probe by its mean over all patients of the series (test patients included)?
+
+**Design.** `run_probe_control.py`: the raw headline setting (fold seed 0, LightGBM model seed 0, 463 samples), both models, twice: `collapse="mean"` (current) and `collapse="first"` (lowest probe id per gene, reads no expression value). Same shared-gene axis by construction (every gene keeps one probe either way). Output `results/probecontrol_raw.csv`, `results/run_probecontrol.json`.
+
+**Rule (fixed now).** If either model's gap moves by more than **0.02** between the two rules, the probe choice materially moves the headline: report both, and the README headline gets the caveat. Otherwise finding #3 is rejected with this number.
+
+**Cost.** CPU, ~2-4 min, € 0.
+
+## 2026-10-21 — RESULT: 10-seed sweep of the raw cohort gap — NOT a seed artefact
+
+**Question.** Is the raw gap (logistic 0.071, LightGBM 0.115 at fold seed 0) a fold-seed accident? (PLAN d912d21, committed before the run.)
+
+**Run.** `python run_seed_sweep.py` (code of d912d21, see the process note in the review entry), 463 samples × 12,040 genes, raw scale, both models. Repro gate: fold seed 0 + model seed 0 reproduces `results/summary_raw.csv`, max difference 1.1e-16 → pass. LOCO identical in all 10 rows (checked by the script). 1,239 s wall, 7,339 CPU-s.
+
+**Measured (gap = mean random-CV AUC − mean LOCO AUC, fold seeds 200-209, model seed 0).**
+
+| model | old (seed 0) | mean | SD | min | max | seeds with gap ≤ 0.01 |
+|---|---|---|---|---|---|---|
+| logistic L2 | 0.071 | **0.071** | 0.004 | 0.065 | 0.076 | 0 of 10 |
+| LightGBM | 0.115 | **0.111** | 0.003 | 0.106 | 0.117 | 0 of 10 |
+
+Random-CV AUC over the 10 seeds: logistic 0.953 (0.947-0.958), LightGBM 0.950 (0.946-0.956). LOCO has no fold randomness: logistic 0.882, LightGBM 0.839 in every row.
+
+**Side check (LightGBM model seed, fold seed 0).** LOCO AUC over model seeds 200-209: mean 0.842, SD **0.012**, range 0.816-0.856 (`results/seedsweep_lgbm_modelseed.csv`). The headline model seed 0 (0.839) sits inside that range. Note (review #16): `subsample=0.8` is inert without `subsample_freq`, so this is `colsample_bytree` randomness.
+
+**Kill rule.** Not fired: both gaps stay above 0.01 in all 10 seeds (the rule needed ≤ 0.01 for both models in ≥ 6).
+
+## Claim-check (2026-10-21)
+Claim:      the raw cohort gap is not a fold-seed accident: logistic 0.071 ± 0.004, LightGBM 0.111 ± 0.003 over 10 fold seeds.
+Measured:   exactly that, raw scale, one fixed LightGBM model seed, the five frozen cohorts.
+Rival:      (a) LightGBM's own randomness: it moves LightGBM's LOCO 3-4× more than the fold seed moves its gap (SD 0.012 vs 0.003), so a LightGBM gap honestly reads "about 0.09-0.13", not "0.115"; the logistic model is deterministic, so its 0.065-0.076 range is the whole story. (b) The headline gap mixes estimands (review #14): the per-cohort paired gap is smaller (0.052 / 0.089 at seed 0) but positive in all 5 cohorts. (c) Exclusions flatter both schemes (README). (d) Probe choice reads test patients (review #3): control moved the gap by +0.007 / −0.003, under its 0.02 line.
+Judge:      the pre-registered rule in the PLAN entry; the CSVs. Not judged by a human.
+
+**What we now believe.** The gap is a stable property of these five cohorts under this pipeline, not a lucky split. "Reproducible" in CORE §6 can now be read as measured across 10 fold seeds (and, for LightGBM, with the model-seed spread stated beside it).
+
+**Where.** `results/seedsweep_raw.csv` (20 rows), `results/seedsweep_raw_summary.csv`, `results/seedsweep_lgbm_modelseed.csv`, `results/run_seedsweep.json`.
+
+## 2026-10-21 — RESULT: probe-choice control (review finding #3) — rejected with a number
+
+**Run.** `python run_probe_control.py` (PLAN 1a0ddd7). Both rules give 463 × 12,040.
+
+| model | gap, highest-mean probe (current) | gap, lowest probe id (reads no value) | change |
+|---|---|---|---|
+| logistic L2 | 0.071 | 0.077 | +0.007 |
+| LightGBM | 0.115 | 0.112 | −0.003 |
+
+The "mean" arm reproduces `summary_raw.csv` exactly. Both changes are under the pre-registered 0.02 line → the probe choice does not materially move the headline; finding #3 is **rejected** on this measurement (the code keeps the published convention, highest mean).
+
+**Where.** `results/probecontrol_raw.csv`, `results/run_probecontrol.json`.
+
+## 2026-10-21 — v1 README written (branch v1/release) + claim-check
+
+**Done.** README gains "Result (v1)", "What the author checked vs what AI did" and "Labels"; 476 → 463 fixed; run commands for the sweep, the probe control and the tests. Every number re-checked against `summary_raw.csv`, `summary_withinsample.csv`, `seedsweep_raw.csv`, `seedsweep_lgbm_modelseed.csv`, `gapdiag_cohorts.csv`.
+
+## Claim-check (2026-10-21, before v1 counts as done)
+Claim:      of a random-CV AUC of ~0.95, ~0.88 survives a held-out cohort (raw, logistic; LightGBM 0.84) and ~0.90 within-sample; the raw gap is stable over 10 fold seeds and positive in every cohort.
+Measured:   raw gaps over 10 fold seeds (both models); LightGBM LOCO over 10 model seeds; within-sample and per-cohort paired gaps at fold seed 0 only.
+Rival:      LightGBM model randomness (stated, its gap range is INFERRED); averaging choice (paired per-cohort gap stated); exclusions flatter both (stated); probe choice (control < 0.02); labels (5/5 published-count checks, one AI-only, two with no pinned table).
+Judge:      pre-registered rules + three outside AI code reviewers (could and did say HIGH; each HIGH checked on the data). No human judge yet: README says so. Narrowed during this check: within-sample = seed 0 only; LightGBM range marked inferred; "every finding fixed with a test" → "all but one with a test, or rejected/limit stated".
+
+**Where.** `README.md` on `v1/release`. Nothing public, no remote (CORE §7). Next (the author): read the README, decide merge to master; then the outreach draft (v1 brief, "human check before public").
+
+## 2026-10-21 — DECISION (the author): CORE §6 updated; merge waits for the author's own read
+
+CORE §6 "reproducible UNVERIFIED" → "measured over 10 fold seeds" (commit 4e631bd, dated, marked as the author's decision, old wording kept). Merge of `v1/release` into master: NOT yet. The author reads README + the 21.10. entries first (choice A), then says "merge v1".
+
+## 2026-10-21 — Pinning paper tables for GSE63990 and GSE42026 → GSE42026 verified, GSE63990 FAILS (condition 2 back to 4 of 5)
+
+**Question.** The `source_of_expected` for these two cohorts said only "Multi-cohort signature papers describing …" (no table). Which published numbers do our counts actually match? (Open item from the v1 README; the author's go.) Checked by Claude (AI), not a human.
+
+**GSE42026 — verified, now pinned.** GEO Series overall design (deposited by the Herberg 2013 authors, J Infect Dis 208:1664-8, PMID 23901082, [doi:10.1093/infdis/jit348](https://doi.org/10.1093/infdis/jit348)): after excluding co-infections, H1N1/09 19, RSV 22, bacterial 18, controls 33 → viral 41, bacterial 18, matching our parse 18 / 41 / 33. Cross-check: Tsalik 2016 Table 1 lists GSE42026 as 59 subjects (18 + 41; the two class columns of that row look swapped). Small note: the paper's own Results (34 RSV, 11 co-infected) imply 23 RSV, not 22. That is likely one array lost to QC, but not stated.
+
+**GSE63990 — published SUBJECT counts disagree with our parse.** Tsalik et al., Sci Transl Med 2016;8:322ra11, PMID 26791949, [doi:10.1126/scitranslmed.aad6873](https://doi.org/10.1126/scitranslmed.aad6873), Table 1 and text: 273 ill subjects = **70 bacterial, 115 viral, 88 non-infectious**. Methods: "measured in two microarray batches with seven overlapping samples (GSE63990)"; GEO: 280 arrays. Our parse counts **arrays**: 73 / 117 / 90. The old `expected_counts` (73 / 117) matched the arrays, not a published table. That is what CLAUDE.md rule 2 warns about, and it went unnoticed since 2026-10-10.
+
+**Which arrays are the re-runs (inferred, not proven).** GEO has no subject ids (fields: batch, infection_status, "sample_N"). The last 7 arrays, sample_274 … sample_280 (GSM1562133-GSM1562139, all batch 1), carry exactly the surplus: 3 bacterial + 2 viral + 2 non-infectious (73−70, 117−115, 90−88). In a cross-batch correlation check (top-5,000-variance probes, each batch centred), several of the strongest cross-batch matches involve these GSMs, but the pairing is not clean (r 0.80-0.93, with near-ties to other samples). So the identity of the 7 is a strong inference, not a fact.
+
+**Why it matters.** The same patient twice in GSE63990 can sit on both sides of a random-CV split. That inflates random-CV and so the gap; leave-one-cohort-out is unaffected (both copies are in the same cohort). With ≤ 5 labelled duplicates in 463 rows the effect should be small, but it has to be measured, not assumed.
+
+**What was changed now (record only, no headline number changed).** GSE63990 `expected_counts` → null (the cohort is UNVERIFIED, the CLAUDE.md option "mark the cohort unverified"), the published subject numbers and the finding are kept in a new `published_subjects_not_arrays` field. GSE42026 `source_of_expected` pinned. `--review`: 4 of 5 verified. **CORE §2 condition 2 is back to 4 of 5.** Fixing the parse (dropping the 7 candidates, then expected 70 / 115) changes the headline data, so it is the author's decision.
+
+## 2026-10-21 — PLAN: GSE63990 duplicate-array sensitivity (NOT the headline)
+
+**Question.** How much do the 7 candidate re-run arrays move the raw gap?
+**Design.** `run_dedup_sensitivity.py`: raw headline setting (fold seed 0, model seed 0), both models, two arms: all 463 arrays vs the same minus the candidates that are labelled (expected 5: 3 bacterial + 2 viral; the 2 non-infectious are not in the matrix). Output `results/dedup_sensitivity_raw.csv`, `results/run_dedup_sensitivity.json`.
+**Reading (fixed now).** A gap change ≤ 0.01 for both models = the duplicates do not move the headline; the v1 numbers stand with a stated caveat. > 0.01 for either model = the v1 headline must be re-run on de-duplicated data before it is quoted (the author's call).
+**Cost.** CPU, ~3 min.
+
+## 2026-10-21 — RESULT: GSE63990 duplicate-array sensitivity → over the line for LightGBM
+
+**Run.** `python run_dedup_sensitivity.py` (PLAN 62a6819). 5 of the 7 candidates are in the labelled matrix (GSM1562134-1562138: 3 bacterial, 2 viral); the 2 non-infectious ones were never in it. 463 → 458 rows.
+
+| model | gap, all arrays | gap, 5 candidates dropped | change | random-CV | LOCO |
+|---|---|---|---|---|---|
+| logistic L2 | 0.071 | 0.076 | +0.005 | 0.953 → 0.957 | 0.882 → 0.881 |
+| LightGBM | 0.115 | 0.127 | **+0.012** | 0.954 → 0.954 | 0.839 → 0.827 |
+
+**Reading (pre-registered).** LightGBM moves by more than 0.01 → the v1 headline must be re-run on de-duplicated data before it is quoted. The rule fired.
+
+**What we now believe (inferred).** The duplicates did not inflate the gap; removing them makes it slightly larger. The LightGBM change comes from LOCO, not from random-CV. Removing training rows changes the models fitted for the other held-out cohorts, so this is mostly ordinary model variance: LightGBM's LOCO has SD 0.012 across model seeds, the same size as this change. So the change is within LightGBM's own noise, but the rule is the rule. The v1 numbers are **provisional** until the de-duplicated re-run; the README says so in its Result section.
+
+**Decision for the author.** A (rec): accept the 7 candidates as the re-runs (label-surplus match + correlation evidence), add an exclusion rule for them, set GSE63990 expected 70 / 115 from Tsalik Table 1, and re-run raw, within-sample and the 10-seed sweep (~25 CPU-min); v1 numbers update. B: drop all of GSE63990's batch 1 overlap uncertainty by keeping only batch 0 (loses 124 arrays, worse). C: keep the 463 arrays and report the dedup sensitivity as a caveat only (cheapest, but GSE63990 stays unverified and condition 2 stays at 4/5).
+
+**Where.** `results/dedup_sensitivity_raw.csv`, `results/run_dedup_sensitivity.json`, README (Result marked provisional, Labels table corrected).
+
+## 2026-10-21 — PLAN: GSE63990 de-duplicated re-run becomes the v1 headline (the author's decision A)
+
+**Decision (the author).** Accept sample_274-280 (GSM1562133-GSM1562139, batch 1) as the 7 re-run arrays and exclude them; the de-duplicated result is the MAIN number; the 280-array result stays in the README as one comparison row. Brief: `docs/brief-2026-10-21-gse63990-dedup.md`.
+
+**What changes.** `config/cohorts.json` gets a per-cohort `exclude_samples` list (with its reason); `src/labels.py` marks those samples `excluded` before any class rule runs (same principle as rule 3: exclusions first). GSE63990 `expected_counts` → **bacterial 70, viral 115** (Tsalik 2016 Table 1). A test builds a series where the 7 ids come back and asserts the count check fails (MISMATCH) without the exclusion and passes with it; a second test pins the real config list.
+
+**Expected.** `--review`: GSE63990 parses 70 / 115 / 95 excluded (88 non-infectious + 7 re-runs) → verified → **CORE §2 condition 2 back to 5 of 5**. If it does not parse 70 / 115, the cohort stays unverified and nothing below runs. Labelled matrix 463 → **458** rows (the 2 non-infectious re-runs were never in it). At fold seed 0 the raw headline must reproduce the `drop_7_candidates` arm of `results/dedup_sensitivity_raw.csv` (logistic gap 0.076, LightGBM 0.127); a mismatch = stop and find out why.
+
+**Re-run (everything that feeds the README numbers).** `run_pipeline.py --review`, `--train` (raw), `--train --within-sample-normalize`, `--train --rank-normalize` (not reported, kept consistent because the gap diagnostics compare to it), `run_gap_diagnostics.py --parts e1` (the per-cohort paired gap), `run_seed_sweep.py` (10 fold seeds + LightGBM model-seed side check). Before overwriting, the 463-array files the README quotes are copied to `results/*_all280arrays.*` for the comparison row.
+
+**Kill rule (unchanged).** The gap is a seed artefact if it is ≤ 0.01 for BOTH models in ≥ 6 of the 10 fold seeds.
+
+**Cost.** CPU only, ~30-40 min, € 0. 14 GB RAM free at start.
+
+## 2026-10-21 — RESULT: GSE63990 de-duplicated re-run → v1 headline updated, condition 2 at 5 of 5
+
+**Question.** With the 7 GSE63990 re-run arrays excluded (the author's decision A; PLAN 4b003b3), do the labels match the paper, and what are the v1 numbers?
+
+**Done.** `exclude_samples` in `config/cohorts.json` (GSM1562133-GSM1562139, with reason), applied in `src/labels.py` before any class rule; an id that is not in the series is refused. GSE63990 `expected_counts` 70 / 115 from Tsalik 2016 Table 1. `tests/test_dedup_exclusion.py` (4 tests): builds the 280-array case and asserts MISMATCH + training refused without the exclusion; on the old `labels.py` 2 of 4 go red. 112 tests pass. Commit be6e6e2. The 463-array files the README quoted are kept as `results/*_all280arrays.*`.
+
+**Measured.** `--review`: **GSE63990 70 / 115 / 95 → verified; 5 of 5 cohorts verified → CORE §2 condition 2 back to 5 of 5** (GSE63990 and GSE6269/GSE42026 checks are AI-verified, not human). Matrix 463 → **458** × 12,040 (191 bacterial, 267 viral). Fold seed 0 reproduces the `drop_7_candidates` arm of `dedup_sensitivity_raw.csv` exactly (0.076 / 0.127), as the PLAN required. Seed-sweep repro gate 1.1e-16. 916 s wall for the sweep.
+
+| | logistic L2 (458) | LightGBM (458) | logistic (463, comparison) | LightGBM (463, comparison) |
+|---|---|---|---|---|
+| random-CV / LOCO, raw, seed 0 | 0.957 / 0.881 | 0.954 / 0.827 | 0.953 / 0.882 | 0.954 / 0.839 |
+| gap, seed 0 | 0.076 | 0.127 | 0.071 | 0.115 |
+| gap, 10 fold seeds (mean ± SD, range) | 0.073 ± 0.004 (0.065-0.076) | 0.123 ± 0.006 (0.113-0.133) | 0.071 ± 0.004 | 0.111 ± 0.003 |
+| within-sample random-CV / LOCO (seed 0) | 0.963 / 0.895 | 0.958 / 0.888 | 0.959 / 0.900 | 0.954 / 0.887 |
+| per-cohort paired gap (seed 0), smallest cohort | 0.054, min 0.033 | 0.090, min 0.011 | 0.052 | 0.089 |
+| LightGBM LOCO over model seeds 200-209 | — | 0.827 ± **0.023** (0.780-0.861) | — | 0.842 ± 0.012 (0.816-0.856) |
+
+**Kill rule.** Not fired: 0 of 10 seeds with gap ≤ 0.01 for either model.
+
+**Surprise.** LightGBM's own model-seed spread doubled (SD 0.012 → 0.023; one seed at 0.780). Removing 5 rows should not do that by itself; it says the LightGBM held-out number is fragile at this sample size. The README now reads the LightGBM gap as "clearly larger than logistic, size uncertain" (inferred range 0.09-0.17).
+
+## Claim-check (2026-10-21, README after the de-duplicated re-run)
+Claim:      of ~0.95 random-CV AUC, ~0.88 survives a held-out cohort (logistic; LightGBM 0.83), ~0.89 within-sample; the gap is stable over 10 fold seeds and positive in every cohort; removing the re-runs makes the gap slightly larger.
+Measured:   exactly those numbers on 458 arrays (raw over 10 fold seeds; within-sample and per-cohort at fold seed 0 only); the 463-array numbers from the same code before the exclusion.
+Rival:      (a) the 7 excluded arrays are not the true re-runs → some duplicates stay and 5 real patients are lost; bounded: the two arms differ by ≤ 0.012 in gap, and the labels now match the paper. (b) LightGBM model randomness (SD 0.023) is larger than the dedup change (+0.012): stated, LightGBM range marked inferred. (c) Exclusions flatter both schemes (stated).
+Judge:      the pre-registered expectation (fold seed 0 must reproduce 0.076 / 0.127; it did, it could have failed), the kill rule, the published Table 1 count (could and did say MISMATCH before). No human judge yet. Narrowed: "one per patient" → "the 7 re-run arrays removed"; "larger" now carries "inside LightGBM's model-seed noise".
+
+**What we now believe.** The v1 numbers are no longer provisional: the de-duplicated run is the headline, and the duplicates were not inflating the gap. The LightGBM number is the soft one.
+
+**Where.** `results/summary_raw.csv`, `summary_withinsample.csv`, `seedsweep_raw*.csv`, `seedsweep_lgbm_modelseed.csv`, `gapdiag_cohorts.csv`, `label_review.md`; comparison `results/*_all280arrays.*`; README on `v1/release`. Next (the author): read README + these entries, say "merge v1". Still open: the identity of the 7 re-runs is inferred (tasks.md).
+
+## 2026-10-21 — PLAN: v1.1, FROZEN published signatures scored both ways (the author's GO)
+
+**Brief.** `docs/brief-2026-10-21-v1.1.md`; plan step "v1.1" in `docs/plan-2026-10-20-v1.md`. Branch `v1.1` off master 8f01501, local only.
+
+**Question.** Does the random-CV vs leave-one-cohort-out (LOCO) gap also hit signatures whose genes were chosen OUTSIDE our data? Two published scores, frozen: Herberg 2016 2-transcript DRS (FAM89A − IFI44L) and Sweeney 2016 7-gene bacterial/viral metascore (geomean IFI27, JUP, LAX1 − geomean HK3, TNIP1, GPAA1, CTSB). Gene lists, directions, rules and sources pinned in `config/signatures.json` (AI-verified, not human).
+
+**Two facts found BEFORE any AUC (they change the question).**
+1. **Sweeney is not outside our data.** Its Table 1A lists GSE6269 GPL96 (73 / 18, exactly our arms), GSE40396 and GSE42026 as DISCOVERY cohorts. Only GSE60244 and GSE63990 are independent of its gene choice. Herberg used GSE42026, GSE40396, GSE6269, GSE60244 only as validation sets; GSE63990 is new to both.
+2. **FAM89A has no probe on GPL571 (GSE63990) or GPL96 (GSE6269)** (annotation search for FAM89A / old name C1orf153 / Gene ID 375061: 0 hits). Herberg can be scored as published on 3 cohorts only (GSE42026, GSE60244, GSE40396). A missing gene is reported, never replaced. Sweeney: all 7 genes on all 5 platforms. GSE60244 has 10 values at 0 in IFI27/JUP (raw values clipped at 0 before log2), which makes a literal geometric mean 0 for those patients.
+
+**What a "frozen" score means here.** No fit at all: each patient's score is computed from that patient's own row, no labels, no other patient, fixed sign (higher = bacterial; never flipped to make AUC > 0.5). "Random CV" = the same 5 stratified folds as the pipeline over all scorable patients (pooled across cohorts), AUC per test fold, mean; "LOCO" = AUC inside each cohort, unweighted mean. The gap is computed the same way as the v1 headline. Seeds: 0 plus 200-209.
+
+**Expectation (written now, may be wrong).** With nothing trained, the v1 gap mechanism (learning local quirks of a cohort that is also in the test fold) cannot act. What is left is the pooling penalty: different cohorts put the same score on different offsets, which hurts a pooled random-CV fold but not a within-cohort AUC. So I expect the frozen gap to be near 0 or NEGATIVE. The informative comparison is then the frozen held-out AUC next to our trained models' held-out AUC on the same cohorts.
+
+**Measured (outputs).** `results/frozen_signatures_cohorts.csv` (per signature × variant × cohort: n, AUC), `results/frozen_signatures_summary.csv` (random-CV mean ± SD over seeds 200-209, seed-0 value, LOCO mean, gap; also LOCO split into "independent of gene choice" vs "discovery" cohorts), `results/run_frozen_signatures.json`. Comparison column: our logistic/LightGBM LOCO AUC on the same cohorts from `results/folds_raw.csv`.
+
+**Variants (pre-registered, all reported).** main = log2 values, highest-mean probe per gene (pipeline default); `linear` = same on 2^x (scale ambiguity in both papers; also removes the zero problem); `firstprobe` = lowest probe id per gene (the probe-choice control, reads no expression value).
+
+**Rival explanations + controls.**
+- (a) *Missing probes / wrong probe* make a signature look bad on a platform: coverage table above; Herberg restricted to its 3 covered cohorts; `firstprobe` variant.
+- (b) *Gene choice saw the cohort* (Sweeney discovery overlap) flatters its held-out AUC: LOCO reported separately for independent vs discovery cohorts.
+- (c) *Scale reading* (log vs linear, zeros): `linear` variant.
+- (d) *Implementation bug* (wrong sign, wrong gene, a silent fit): tests that go red (wrong gene list, a scorer that reads other patients, a flipped AUC, a silently dropped gene).
+
+**Kill rule (positive control).** Each paper reports its own score working on some of our cohorts: Sweeney summary AUC 0.97 over its discovery cohorts; Herberg AUC 0.892-0.966 on four published sets (eTable 6, incl. Hu = GSE40396, Ramilo = GSE6269, Suarez = GSE60244). If, in the main variant, Sweeney's AUC is < 0.75 on any of its 3 discovery cohorts, or Herberg's is < 0.75 on GSE40396 or GSE60244, I treat it as an implementation or mapping bug: STOP, no numbers into the README, find the cause first.
+
+**Cost.** CPU, seconds (no training). Free RAM 16.2 GB at start.
+
+## 2026-10-21 — RESULT: v1.1 frozen signatures → no random-CV bonus without fitting; held-out about equal to our logistic model
+
+**Run.** `python run_frozen_signatures.py` (PLAN c193407, code 472f895). 122 tests pass (10 new; 4 deliberate mutations of `src/frozen_signatures.py` each turned at least one red: no published-list check, silently dropped gene, auto-flipped AUC, disabled per-sample guard). Seconds of CPU, 14.6 GB RAM free.
+
+**Measured (main variant; seed 0 for per-cohort, gap over fold seeds 200-209).**
+
+| score | cohorts (n) | random-CV | LOCO | gap, 10 seeds | LOCO, cohorts independent of its genes | our logistic / LightGBM LOCO, same cohorts |
+|---|---|---|---|---|---|---|
+| Herberg DRS | 3 (182) | 0.876 | 0.882 | −0.004 ± 0.005 (−0.014 … +0.004) | 0.882 (all 3) | 0.846 / 0.847 |
+| Sweeney 7-gene | 5 (458) | 0.837 | 0.912 | −0.075 ± 0.002 | 0.901 (GSE63990 0.888, GSE60244 0.914) | 0.881 / 0.827 (independent 2: 0.885 / 0.851) |
+
+Per cohort (Sweeney): GSE6269 0.972, GSE42026 0.940, GSE40396 0.847 (its 3 discovery cohorts); Herberg: GSE42026 0.866, GSE60244 0.889, GSE40396 0.892. Variants: `linear` gaps −0.047 / −0.095, `firstprobe` +0.001 / −0.086; held-out means move ≤ 0.016. Over all variants × seeds the gap lies in −0.100 … +0.010.
+
+**Kill rule (positive control).** Not fired: lowest relevant AUC Sweeney GSE40396 0.847 (line 0.75). Herberg 0.889 / 0.892 on GSE60244 / GSE40396 sit at the low end of its own reported 0.892-0.966 (eTable 6, not read; range from the main text).
+
+**Expectation check.** Pre-written "gap near 0 or NEGATIVE": held. It could have failed (a positive gap would have meant something other than fitting inflates random-CV).
+
+**Blind judge.** A fresh AI agent, barred from the v1.1 code/config/results/LABBOOK/README, re-implemented both scores from the published definitions and matched all 10 per-cohort AUCs, both LOCO means and both pooled random-CV values to 3 decimals (same model family; checks the implementation, not the reading of the papers).
+
+## Claim-check (2026-10-21, v1.1 README sentences)
+Claim:      frozen published scores get no random-CV bonus (gap ≤ 0.01, mostly negative), and held out they do about as well as our logistic model and better than LightGBM on the same cohorts.
+Measured:   pooled 5-fold mean AUC minus unweighted per-cohort mean AUC, 11 fold seeds × 3 variants; held-out means over 3 (Herberg) / 5 or 2 (Sweeney) cohorts at fold seed 0, no CIs; comparison against v1 `folds_raw.csv` (model seed 0).
+Rival:      (a) "no bonus" is partly true by construction (nothing trained) → sentence narrowed to "expected; fits, does not prove, the fitting reading". (b) Sweeney's genes were chosen on 3 of our cohorts → independent-only number reported (0.901). (c) small n (GSE40396: 8 bacterial) and LightGBM seed SD 0.023 → "about the same", not "better"; no CI computed. (d) missing FAM89A → Herberg on 3 cohorts, stated. (e) scale/probe readings → 2 variants, same direction.
+Judge:      pre-registered kill rule + pre-written expectation (both could have said no) and a blind re-implementation (could have disagreed). No human judge; the supplements (eTables 3/6, fig. S3) were not read.
+
+**What we now believe.** The v1 gap is a property of training on the data, not of host-response genes as such: two gene lists chosen elsewhere, used frozen, lose nothing to a held-out cohort (by construction) and land at about the held-out AUC our trained models reach (inferred from small means). Pooling cohorts *hurts* a frozen score (Sweeney −0.075), which is the platform-offset problem Sweeney's COCONUT method was built for.
+
+**Where.** `config/signatures.json`, `src/frozen_signatures.py`, `run_frozen_signatures.py`, `tests/test_frozen_signatures.py`, `results/frozen_signatures_*.csv`, `results/run_frozen_signatures.json`, README section "v1.1". Branch `v1.1`, local, NOT merged. Next (the author): read README "v1.1", say "merge v1.1". Open: a human check of the gene lists against the supplements.
+
+## 2026-10-21 — PLAN: v1.1 supplements check — pin gene lists + score rules to the supplements, 2 more variants (the author's decision)
+
+**Brief.** `docs/brief-2026-10-21-v1.1-supplements.md`. Branch `v1.1`, local only. Open point it closes: the gene lists were read from the PMC main texts only.
+
+**Read (before any code or run; Claude, AI, not a human).**
+- Herberg supplement `https://pmc.ncbi.nlm.nih.gov/articles/instance/5997174/bin/NIHMS75938-supplement-Supplementary_files.pdf`. **eTable 3** (38-transcript list): IFI44L log2 FC bacterial vs viral **−3.79**, FAM89A **+1.21** (and +1.26 for its 2nd array id) → FAM89A bacterial-up, IFI44L viral-up: as pinned. **Supplementary Methods, eq. (1):** "the DRS was calculated by subtracting the log2 transformed expression value of IFI44L from the log2 transformed FAM89A expression value for every patient. … Higher scores indicate bacterial assignment" → the rule is **log2**; our main reading is right, and the `linear` variant becomes a pure sensitivity (kept, pre-registered). **eTable 6** (external datasets): GSE6269 **GPL570 subset only** (12 bacterial / 10 viral; probes 204439_at, 226448_at) — NOT our GPL96 arrays; GSE40396 8 / 22, **AUC 89.2**; GSE60244 15 / 64 (we have 22 / 71), AUC 89.8. **GSE42026 appears nowhere in the 2016 paper** (main text + supplement). Two config statements were wrong: "GSE42026 ref 13 validation" and "GSE6269 validation" as if it were our arrays. Neither changes a number (the `independent` list means "not used to choose the genes", and Herberg is not scored on GSE6269), but the notes get fixed.
+- Sweeney supplement `https://pmc.ncbi.nlm.nih.gov/articles/instance/5348917/bin/NIHMS850538-supplement-supplementary_figures_and_tables.pdf`. **Fig. S3** forest plots name exactly the 7 genes; **Table S1** summary effect sizes (viral vs bacterial, log2, Hedges' g): IFI27 +2.299, JUP +1.008, LAX1 +1.114, HK3 −1.109, TNIP1 −1.023, GPAA1 −1.275, CTSB −1.080 → as pinned. Fig. S3 discovery cohorts include GSE6269 gpl96, GSE40396, GSE42026 (as pinned); Table S2 lists GSE60244 and GSE63990 as direct validation (as pinned). Fig. S1 counts: GSE40396 8 / 22, GSE42026 18 / 41, GSE60244 22 / 71, GSE63990 70 / 115 = ours.
+- MetaIntegrator `calculateScore` (CRAN v2.1.3, 2020, `https://github.com/cran/MetaIntegrator/blob/master/R/calculateScore.R`): geomean(pos) − geomean(neg), **no ratio-of-genes factor**; if a dataset's minimum is < 0 the whole dataset is shifted by |min| + 1; then `scale()` = **z-score inside the dataset**. The package postdates the 2016 paper; it is the authors' public implementation, not proof of what the paper ran.
+
+**Expectation.** The gene lists, directions and our main rule are confirmed → the **main variant numbers must reproduce exactly** (same code path); any change = a bug, stop.
+
+**New variants (pre-registered now, reported next to the 3 old ones, never replacing main).**
+4. `ratio_one_term` — the other reading of Sweeney's "minus the geometric mean of the bacterial genes, times the ratio of the number of genes in each set": the factor sits on the bacterial term only, ratio in the order the text names the sets, n_viral / n_bacterial = 3/4. Our sign: 0.75 · geomean(bacterial) − geomean(viral). (The reverse order, 4/3, is not run; said here so it is not silently skipped.) Herberg has 1 : 1 genes → factor 1 → identical to main by construction (reported as such).
+5. `metaintegrator` — main score, then the `calculateScore` steps: shift a cohort if its min < 0, z-score the score inside each cohort. This reads the whole cohort (like `--rank-normalize`), so it is NOT a per-patient frozen score; it is the authors' software reading. Prediction: LOCO identical to main (a monotone per-cohort transform cannot change a within-cohort AUC); pooled random-CV goes UP because cohort offsets are removed → gap moves toward 0 or above. If this happens it supports, not overturns, the "pooling penalty = platform offsets" reading.
+
+**Headline (fixed now, for the merge rule).** The README v1.1 table's **main-variant** numbers: random-CV, LOCO, 10-seed gap, independent-cohort LOCO, for both scores. Merge rule (brief): none moves by > 0.01 → merge v1.1 into master locally; otherwise no merge, options to the author. Variants 4-5 are sensitivity rows, not headline.
+
+**Tests (must go red on broken code).** A test transcribes the supplement effect signs (eTable 3, Table S1) independently of `PUBLISHED`, derives the up/down lists and asserts they equal `PUBLISHED` and the config; it also builds a wrong list (one gene swapped) and asserts the comparison fires. Plus: the ratio variant weights the bacterial term by 3/4; the MetaIntegrator step gives per-cohort mean 0 / SD 1, shifts a negative cohort, and leaves every within-cohort AUC unchanged. Mutation check: edit `PUBLISHED` → the supplement test must go red.
+
+**Kill rule.** Unchanged (main variant, 0.75 line). Plus: main reproduces to 1e-12 or stop.
+
+**Cost.** CPU, seconds. € 0.
+
+## 2026-10-21 — RESULT: v1.1 supplements check → every gene and sign confirmed, main numbers unchanged (diff 0), merge rule allows the merge
+
+**Run.** `python run_frozen_signatures.py` (PLAN 661ea85). 127 tests pass (5 new). Mutation check: a gene swapped in `PUBLISHED` + config together (which the old config test cannot see) → the new supplement test goes red; ratio inverted (4/3) → red; z-score across instead of within cohorts → red. Seconds of CPU.
+
+**Measured.** Main, `linear`, `firstprobe`: all 6 summary rows and 24 per-cohort AUCs equal the c193407 run, **max abs difference 0**. → No headline number moves; the brief's merge condition (none > 0.01) holds.
+
+| score | variant | random-CV (seed 0) | LOCO | gap, 10 seeds (range) | LOCO independent |
+|---|---|---|---|---|---|
+| Herberg | main (= ratio_one_term, 1 : 1 genes) | 0.876 | 0.882 | −0.004 ± 0.005 (−0.014 … +0.004) | 0.882 |
+| Herberg | metaintegrator | 0.883 | 0.882 | −0.003 ± 0.006 (−0.014 … +0.005) | 0.882 |
+| Sweeney | main | 0.837 | 0.912 | −0.075 ± 0.002 | 0.901 |
+| Sweeney | ratio_one_term | 0.819 | 0.910 | −0.088 ± 0.002 | 0.898 |
+| Sweeney | metaintegrator | 0.859 | 0.912 | −0.055 ± 0.002 (−0.059 … −0.051) | 0.901 |
+
+Per cohort, `ratio_one_term` moves Sweeney by ≤ 0.008 (GSE42026 0.940 → 0.932); `metaintegrator` per-cohort AUCs are identical to main, as predicted. Positive control from the supplement: GSE40396 (same 8 / 22 counts as Herberg eTable 6) our 0.892 vs their 89.2 %; GSE60244 our 0.889 (22 / 71) vs their 89.8 % (15 / 64, a different subset).
+
+**Expectation check.** "Main reproduces exactly": held. "metaintegrator: LOCO identical, random-CV up, gap toward 0 or above": LOCO identical and gap toward 0 held; it did NOT reach 0 (−0.055). Inferred reason, not tested: z-scoring centres each cohort on its own mean, and the cohorts' bacterial shares differ (GSE6269 80 %, GSE63990 38 %), so the class-specific offsets survive.
+
+## Claim-check (2026-10-21, changed README v1.1 sentences)
+Claim:      the supplements confirm every gene and sign, the numbers did not change; Herberg chose its genes on none of our cohorts; the ratio reading moves held-out ≤ 0.016; MetaIntegrator's z-scoring shrinks Sweeney's pooling penalty to −0.055 without touching held-out; GSE40396 matches Herberg's own 89.2 %.
+Measured:   the supplement PDFs as text (Firecrawl PDF parse; eTable 3, eq. 1, eTable 6, fig. S3, Table S1), the MetaIntegrator v2.1.3 source, and the re-run with diff 0 on the old variants.
+Rival:      (a) a PDF-parse error in a table → the FAM89A/IFI44L signs are double-sourced (eTable 3 and eq. 1 text), Sweeney's by fig. S3 and Table S1. (b) "same 8 / 22" ≠ same patients → narrowed to "same counts". (c) "GSE42026 not in the paper" rests on a text search of the PMC main text + supplement → narrowed to "not named as a dataset"; patient overlap stays "not stated". (d) the class-mix explanation for the remaining −0.055 is a guess → marked inferred. (e) MetaIntegrator (2020) may not be what the 2016 paper ran → stated in config and here.
+Judge:      the pre-registered "main must reproduce to 1e-12" (could have failed), the mutation-checked tests, Herberg's own published AUC on the same-count cohort (could have disagreed). No human read the supplements; still AI-verified.
+
+**What we now believe.** The v1.1 gene lists and rules were right; the open "supplements not read" point is closed (by AI, not a human). The authors' own software would show a smaller pooling penalty for Sweeney (−0.055 instead of −0.075), still negative, still no random-CV bonus.
+
+**Where.** `config/signatures.json` (supplement links + table/figure per field, Herberg overlap note corrected), `src/frozen_signatures.py`, `run_frozen_signatures.py`, `tests/test_frozen_signatures.py`, `results/frozen_signatures_*.csv`, README "v1.1". Next per brief: merge v1.1 into master locally (the author's OK under the rule), then outreach drafts.
+
+## 2026-10-21 — BLIND CHECK of condition 4
+
+**Question.** Does the 2026-10-20 condition-4 entry (merge 74cbb73) say what `results/summary_raw.csv` and `results/summary_withinsample.csv` say? Second, independent re-read after the 2026-10-20 one.
+
+**Who checked.** A fresh Claude (AI) worker agent, not a human; it did not write the entry. Same model family as the author, so this is an independent *read*, not an independent judge of the science. Nothing was re-run (CPU-free, read-only).
+
+**Order.** The two CSVs were read first; the numbers below were written down before the LABBOOK entry was opened.
+
+**Blind read of the CSVs (mean AUC over 5 folds / 5 held-out cohorts).**
+| scale | model | random_cv | leave_one_cohort_out | gap |
+|---|---|---|---|---|
+| raw | logistic_l2 | 0.953 | 0.882 | 0.071 |
+| raw | lightgbm | 0.954 | 0.839 | 0.115 |
+| within-sample | logistic_l2 | 0.959 | 0.900 | 0.059 |
+| within-sample | lightgbm | 0.954 | 0.887 | 0.067 |
+
+**Criteria.**
+| criterion | verdict | detail |
+|---|---|---|
+| Raw AUCs 0.953/0.882 (logistic), 0.954/0.839 (LightGBM) | PASS | all four quoted in the entry match to 3 decimals |
+| Within-sample AUCs 0.959/0.900, 0.954/0.887 | PASS with note | held-out 0.900 and 0.887 are quoted and match. The within-sample random-CV values (0.959 logistic, 0.954 LightGBM) are NOT quoted in the entry: it quotes only the raw 0.953/0.954 as "random-CV AUC of 0.95". Nothing is wrong, but 5 of the 6 values the card lists are never written there as such (0.954 does appear, for raw LightGBM, and equals the within-sample LightGBM value). |
+| Headline 0.88 raw and 0.90 within-sample "survive from 0.95" | PASS | 0.882 -> 0.88, 0.900 -> 0.90 (logistic held-out); 0.953 -> 0.95 |
+| Gaps quoted (raw 0.071/0.115, within-sample 0.059/0.067) | PASS | match the `gap` column to 3 decimals |
+| raw / within-sample labels not swapped | PASS | raw held-out 0.882/0.839 (raw file), within-sample 0.900/0.887 (within-sample file) |
+| No rank-normalised number quoted | PASS | the entry only says rank-normalised numbers are NOT used (condition 3); no `summary_ranknorm.csv` value appears |
+| Claim-check names the single-run limitation | PASS | "no seed sweep is on file ... single-run numbers" and rival (b) "single-run noise — not ruled out" |
+| Extra figures in the entry | PASS | per-cohort spread raw logistic 0.82-0.94 and LightGBM 0.70-0.89 match min_auc/max_auc (0.824-0.941, 0.698-0.894); "7 to 12 points" matches gaps 0.071-0.115 |
+
+**Mismatches verbatim.** None in any number. One omission, same as the first blind re-read's caveat: the entry's wording "gives back about one to five of those points" compares gaps (0.071 -> 0.059, 0.115 -> 0.067), which are measured against the within-sample random-CV AUCs; a reader subtracting from the raw 0.953 would get 0.053, not 0.059.
+
+**Claim-check.** Claim: the entry's numbers and labels equal the CSVs. Measured: 18 numbers compared, 0 mismatches. Rival: the reader copied obvious cells; for a transcription claim that is the whole test. Judge: the CSVs themselves. Not a verdict on the science (single run for these two files; the separate 10-seed sweep result is in its own entry above; GSE6269 labels AI-verified, not human).
+
+**Verdict: PASS.** No number corrected, entry untouched.
+
+**Where.** This entry; branch `a side branch` (from master, not merged; no remote, CORE §7).
+
+## 2026-10-22 — PLAN: within-sample 10-seed sweep + restate the condition-4 sentence at 458 arrays (approved by the author)
+
+**Question.** The within-sample half of the §1 answer sentence rests on fold seed 0 only. Does the within-sample random-CV minus leave-one-cohort-out gap hold over 10 fold seeds?
+
+**Setup.** `run_seed_sweep.py --within-sample`: `rank_normalize_within_sample(X)` once on the 458 x 12,040 matrix (one patient at a time, nothing reads another patient, so applying it before the folds leaks nothing), then the same `sweep_rows` as the raw sweep. Fold seeds 200-209, model seed 0. Repro gate: fold seed 0 must reproduce `results/summary_withinsample.csv` to 1e-12, else stop. LightGBM model-seed side check NOT run (its range is inferred from the raw side check, SD 0.023). CPU only, expected ~15-20 min, EUR 0.
+
+**Claim.** Under leak-free within-sample normalisation about 0.89 of a ~0.96 random-CV AUC survives a held-out cohort, and that is not a fold-seed accident.
+
+**Pre-registered reading.** If the 10-seed within-sample mean gap differs from the seed-0 gap by more than 0.01 for either model, the README/§1 within-sample number is wrong and must be replaced. A within-sample gap <= 0.01 is NOT a kill (CORE §3: it is an answer). Rival: seed 0 was a lucky/unlucky split, or LightGBM's own randomness.
+
+**Where.** Branch `within-sample-seedsweep` (no merge, no remote, CORE §7).
+
+## 2026-10-22 — RESULT: within-sample 10-seed sweep → the within-sample gap is not a seed accident; condition-4 sentence restated at 458 arrays
+
+**Question.** The within-sample half of the §1 sentence rested on fold seed 0 only. Does its gap survive 10 fold seeds? (PLAN above.)
+
+**Design.** Same sweep as the raw one, but each patient's genes are ranked against each other first (`rank_normalize_within_sample`, one patient at a time, no other patient read). Random-CV fold seeds 200-209, model seed 0, 458 arrays x 12,040 genes, 5 cohorts. Repro gate: fold seed 0 vs `summary_withinsample.csv`, max diff 1.1e-16 (limit 1e-12) — passed. Leave-one-cohort-out (LOCO) has no fold randomness, so it is identical in all 10 rows (checked). 584 s wall, CPU only.
+
+**Measured** (`results/seedsweep_withinsample.csv`, `..._summary.csv`, `run_seedsweep_withinsample.json`).
+| model | random-CV AUC (10 seeds) | LOCO AUC | gap mean ± SD | gap range | gap at seed 0 | 10-seed mean minus seed 0 |
+|---|---|---|---|---|---|---|
+| logistic L2 | 0.960 ± 0.003 | 0.895 | 0.065 ± 0.003 | 0.061-0.068 | 0.068 | -0.004 |
+| LightGBM | 0.954 ± 0.004 | 0.888 | 0.067 ± 0.004 | 0.062-0.074 | 0.070 | -0.003 |
+
+In words: moving the random split changes the random-CV number by only a few thousandths; the held-out-cohort number does not move with the split at all. Seed 0 was a slightly high draw (about 0.003-0.004 AUC), not a lucky one.
+
+**Pre-registered reading.** Kill = 10-seed mean differs from seed 0 by more than 0.01 for either model. Differences are 0.004 and 0.003 → **not fired**; the within-sample number in the README/§1 stands. Gap <= 0.01 count: 0 of 10 seeds for both models (also not a kill by CORE §3). Not swept: LightGBM's own model seed on the within-sample scale. Its range is INFERRED from the raw side check (LOCO SD 0.023 at 458 arrays, `seedsweep_lgbm_modelseed.csv`); the within-sample LightGBM LOCO 0.888 is therefore one model-seed draw.
+
+**Condition-4 sentence, restated (supersedes the 2026-10-20 one).** Of a random-CV AUC of about 0.96 (logistic L2 0.957 raw / 0.960 within-sample, LightGBM 0.954 / 0.954), **0.88 survives a held-out cohort on the raw scale** (logistic LOCO 0.881, gap 0.073 ± 0.004 over 10 fold seeds; LightGBM 0.827, gap 0.123 ± 0.006, model-seed range inferred wide) and **0.89 survives under within-sample normalisation** (logistic 0.895, gap 0.065 ± 0.003; LightGBM 0.888, gap 0.067 ± 0.004). Sources: raw `results/summary_raw.csv` (seed 0) + `results/seedsweep_raw_summary.csv` + `results/seedsweep_raw.csv` (random-CV means); within-sample `results/summary_withinsample.csv` (seed 0) + `results/seedsweep_withinsample_summary.csv` + `results/seedsweep_withinsample.csv`. All 458 arrays, commit of this entry. Plain words: roughly 6.5 to 12 AUC points of the headline are hospital-specific; the bedside-legal per-patient transform gives back about 1 point for logistic and about 6 for LightGBM (whose raw number is the fragile one).
+
+## Claim-check (2026-10-22)
+Claim:      under leak-free within-sample normalisation about 0.89 of a ~0.96 random-CV AUC survives a held-out cohort, and not by fold-seed accident.
+Measured:   random-CV minus LOCO AUC, within-sample scale, 10 fold seeds x 2 models, 458 arrays; repro gate 1.1e-16.
+Rival:      (a) seed 0 was an odd split — ruled out for fold seeds (mean differs by 0.003-0.004). (b) LightGBM model randomness — NOT tested here; inferred from the raw side check (SD 0.023). (c) only 5 held-out cohorts, so the LOCO value itself rests on 5 numbers, unchanged by this sweep. (d) labels: 3 of 5 cohort checks are AI-only.
+Judge:      none outside the lab for this entry; the numbers are machine-written CSVs, the sentence is self-written. The restated sentence still needs a blind re-read against the CSVs (as the earlier blind check did for the old one).
+
+**Next (not part of this card).** Carry the within-sample sweep numbers + this entry into the public copy of this repo (this entry is that carried copy); then the author's own check of 1-2 published count tables; then outreach to other researchers.
+
+**Where.** Branch `within-sample-seedsweep` in the original repo (no merge, no remote, CORE §7). Test: `tests/test_seed_sweep.py::test_within_sample_flag_changes_numbers_and_paths` (goes red when the flag falls back to raw — confirmed by mutation).
+
+## 2026-10-23 — BLIND RE-READ of the restated condition-4 sentence (carry into this copy)
+
+**Who.** A fresh Claude (AI) agent that saw only the sentence and six CSVs (`summary_raw`, `seedsweep_raw_summary`, `seedsweep_raw`, `summary_withinsample`, `seedsweep_withinsample_summary`, `seedsweep_withinsample`), not the reasoning above. Same model family as the author: an independent read, not an independent judge of the science.
+
+**Result.** 21 numbers checked. 19 match: all LOCO AUCs (0.881, 0.827, 0.895, 0.888), all 8 gap means and SDs, n = 10 seeds, model seed 0 everywhere, and "6.5 to 12 points" (gaps 0.065-0.123; 0.123 rounds to 12). **2 mismatches, in the random-CV figures of the 2026-10-22 RESULT sentence above:** it quotes logistic raw 0.957 and LightGBM raw 0.954, which are fold-seed-0 values, while the gaps beside them are 10-seed means (10-seed means: 0.953 and 0.950). The within-sample figures (0.960, 0.954) are 10-seed means. So 0.957 - 0.881 does not equal the quoted 0.073 (seed-0 gap is 0.076). Not checkable from the CSVs: the LightGBM model-seed range and "legal at the bedside".
+
+**What was done.** The 2026-10-22 RESULT sentence is left as written (it is a diary record). The README one-sentence summary in this copy uses the 10-seed means (0.953 / 0.960 and 0.950 / 0.954, "about 0.95 to 0.96"). The headline conclusions (about 0.88 and 0.89 survive) do not change.
+
+
+## 2026-10-23 — Checked by the author: published class counts for GSE40396 and GSE6269
+
+**Question.** Do the published class counts the label check relies on (`config/cohorts.json` `expected_counts`) really say what we wrote? Until today both were read by Claude (AI) only.
+
+**Done.** Claude opened each paper at the exact passage; the author read the numbers and compared them with ours.
+- Hu et al., PNAS 2013 (PMC3732941), Results, first paragraph: 30 febrile children = 8 HHV-6 + 8 adenovirus + 6 enterovirus + 8 bacterial. Ours: viral 22 / bacterial 8.
+- Ramilo et al., Blood 2007 (PMC1801073), Table 1 footnote: E. coli 29 + S. aureus 31 + S. pneumoniae 13 = 73 bacterial, influenza A 18. Ours: bacterial 73 / viral 18. The paper's larger totals elsewhere cover all three platforms; we use the GPL96 Table 1 set only.
+
+**Measured.**
+- checked by the author (2026-10-23): Hu 2013 PNAS counts 22 viral / 8 bacterial match.
+- checked by the author (2026-10-23): Ramilo 2007 Blood Table 1 counts 73 bacterial / 18 viral match.
+
+**Belief.** 2 of the 5 cohort count checks now have a human judge (GSE40396, GSE6269). GSE63990 and GSE42026 are still checked by AI only; GSE60244 was accepted by the author on 2026-10-19 from the AI comparison, not re-read in the paper. No code, config or number changed.
+
+**Where.** README: *Labels are checked*, *Honest limits*, the provenance table and the Labels table.
+
+## 2026-10-23 — Outreach: first author reply confirms the Sweeney score reading
+
+**Done.** Questions sent to the authors of the two frozen signatures and of two cohorts. One of the Sweeney 2016 authors replied the same day.
+
+**Measured (what the reply says, paraphrased).**
+- Sweeney score reading: the author confirms that our reading of the score is right. The constant ratio factor was added at a reviewer's request; their own analysis showed it does not matter. This matches our variant test (factor on one term moves held-out AUC 0.912 -> 0.910; on the whole difference it changes no AUC).
+- On random CV: in the author's view, random CV leaks information; the classifier has very likely seen samples from the dataset left for validation, one reason classifiers look ready for translation and then fail. Note: this answers the trained-model gap (our headline). It does not directly answer why the FROZEN score lands lower on pooled random-CV (a frozen score cannot leak); that question stays open.
+- Pointer: the 7-gene score is part of the 29-gene signature validated prospectively in 1,222 patients across 22 emergency departments (USA + Europe), now FDA-cleared: Liesenfeld et al., Nature Medicine 2025, https://doi.org/10.1038/s41591-025-03933-y (not yet read by us). _[DOI corrected 2026-10-25: this note first carried 10.1038/s41591-025-03956-5, a different Nature Medicine paper; see the 2026-10-24 entry.]_
+- Publication: the author has no objection to us publishing this work, in whatever form and at whatever time suits us.
+
+**Belief.** First outside human judge on this study: the Sweeney score is implemented as the authors intended. Labels and code are still unchecked by a human expert (two further author groups asked on 2026-10-23, no reply yet).
+
+**Where.** Label CSVs sent with the questions: `reports/2026-10-23-outreach-labels/`.
+
+## 2026-10-24 — Read Liesenfeld 2025 (TriVerity validation); cited in README Prior art
+
+**Question.** What does the paper behind the FDA-cleared 29-gene test actually report, and how does it relate to this study?
+
+**Done.** Read the open-access full text (PMC12705421). Correction: the DOI in the 2026-10-23 pointer entry (`10.1038/s41591-025-03956-5`) is a different Nature Medicine paper (an immune-dysregulation framework from the SUBSPACE consortium). The Liesenfeld paper is `10.1038/s41591-025-03933-y`; the earlier entry's DOI was corrected in place on 2026-10-25, with a bracketed note saying so.
+
+**Measured (read in the paper, not run by us).**
+- SEPSIS-SHIELD: prospective, non-interventional; 1,441 adults enrolled in 22 emergency departments (21 US, 1 Europe), March 2020 to May 2024; 1,222 with valid TriVerity results; 729 consensus-adjudicated (main population); 1,120 evaluable for the severity endpoint.
+- Consensus population: Bacterial AUROC 0.83 (80% CI 0.81-0.85), Viral 0.91 (0.89-0.93), Severity 0.78 (0.75-0.81). Forced adjudication: 0.76 bacterial, 0.83 viral.
+- The existing README row ("1,222 patients across 22 sites") agrees with the paper; no change to it.
+
+**Belief.** TriVerity's published numbers come from a prospective multi-site validation of one locked assay against clinical adjudication. They are not comparable with our retrospective random-CV vs leave-one-cohort-out numbers, and the README says so.
+
+**Where.** README, *Prior art*, paragraph under the table.
+
+## 2026-10-25 — Repo published privately on GitHub
+
+**Done.** This public-ready copy went to GitHub as a **private** repository under
+the author's real-name account, with a **one-commit history** (the local
+preparation history was not pushed). Added before the commit: a `LICENSE` file
+(MIT), a License line at the end of the README, and this entry. The three
+verbatim phrases from the 2026-10-23 author reply were paraphrased.
+
+**Measured.** Nothing new. No number, result file or code path changed.
+
+**Belief.** Unchanged.
+
+**Where.** GitHub, private, read access granted per reviewer on request.
+**Gate:** the repo stays private until the two remaining author groups have had
+about two weeks to reply (~2026-11-06); the switch to public is the author's
+decision alone.

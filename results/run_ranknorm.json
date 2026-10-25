@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-21",
+  "rank_normalize": true,
+  "within_sample_normalize": false,
+  "cohorts": {
+    "GSE63990": 185,
+    "GSE42026": 59,
+    "GSE60244": 93,
+    "GSE40396": 30,
+    "GSE6269": 91
+  },
+  "n_samples": 458,
+  "n_genes": 12040,
+  "notes": [
+    "GSE63990: 13101 genes, 185 labelled samples",
+    "GSE42026: 19609 genes, 59 labelled samples, log2 applied",
+    "GSE60244: 20759 genes, 93 labelled samples, log2 applied",
+    "GSE40396: 20754 genes, 30 labelled samples",
+    "GSE6269: 13101 genes, 91 labelled samples, log2 applied",
+    "shared gene symbols across 5 cohorts: 12040",
+    "imputed cells (cohort gene mean, else 0.0): 0"
+  ]
+}

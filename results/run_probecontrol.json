@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-21",
+  "commit": "1a0ddd7",
+  "move_line": 0.02,
+  "moved": false,
+  "gap_change": {
+    "lightgbm": -0.0030342212029420557,
+    "logistic_l2": 0.006648167135330674
+  },
+  "wall_s": 249.2
+}

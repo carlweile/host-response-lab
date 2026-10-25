@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-22",
+  "commit": "16abbbb",
+  "seeds": [
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209
+  ],
+  "scale": "within_sample",
+  "n_samples": 458,
+  "n_genes": 12040,
+  "repro_gate_max_diff": 1.1102230246251565e-16,
+  "kill_gap": 0.01,
+  "kill_fired": false,
+  "lgbm_modelseed_loco": null,
+  "cpu_s": 3699.1,
+  "wall_s": 583.6
+}

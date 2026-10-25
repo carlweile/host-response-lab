@@ -1,0 +1,8 @@
+# Raw downloads are large and reproducible from config/cohorts.json
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/

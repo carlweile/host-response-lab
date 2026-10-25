@@ -1,0 +1,73 @@
+{
+  "_comment": [
+    "FROZEN published signatures for v1.1. Gene lists, directions and score rules are",
+    "copied from the papers and are never re-fitted on our data. Pinned by Claude (AI) on",
+    "2026-10-21 from the main texts AND the supplements (eTable 3/6, fig. S3, Table S1) plus",
+    "MetaIntegrator calculateScore; still not checked by a human. Higher score = more bacterial",
+    "in our code; the papers' own sign is recorded in published_direction.",
+    "validation_cohorts_ours = our cohorts NOT used to choose the genes (independent), whether or",
+    "not the paper itself scored them."
+  ],
+  "signatures": [
+    {
+      "name": "herberg2016_drs",
+      "paper": "Herberg et al., JAMA 2016;316(8):835-845, PMID 27552617, doi:10.1001/jama.2016.11236, https://pmc.ncbi.nlm.nih.gov/articles/PMC5997174/",
+      "genes_bacterial_up": [
+        "FAM89A"
+      ],
+      "genes_viral_up": [
+        "IFI44L"
+      ],
+      "rule": "sum",
+      "published_direction": "eTable 3 (38-transcript signature): log2 FC definite bacterial vs definite viral FAM89A +1.21 (2nd array id +1.26), IFI44L -3.79 -> FAM89A bacterial-up, IFI44L viral-up. Supplementary Methods eq. (1): 'the DRS was calculated by subtracting the log2 transformed expression value of IFI44L from the log2 transformed FAM89A expression value for every patient ... Higher scores indicate bacterial assignment'. Same sign as ours.",
+      "source_table": "Supplement https://pmc.ncbi.nlm.nih.gov/articles/instance/5997174/bin/NIHMS75938-supplement-Supplementary_files.pdf: eTable 3 (gene list + direction), Supplementary Methods 'Disease Risk Score' eq. (1) (rule), eTable 6 (external validation datasets + AUCs). Main text: RefSeq NM_006820.1 IFI44L, NM_198552.1 FAM89A.",
+      "scale_ambiguity": "Resolved by Supplementary Methods eq. (1): log2. The 'linear' (2^x) variant stays as a pre-registered sensitivity only.",
+      "discovery_cohorts_ours": [],
+      "validation_cohorts_ours": [
+        "GSE42026",
+        "GSE40396",
+        "GSE6269",
+        "GSE60244"
+      ],
+      "overlap_note": "Discovery = new IRIS/EU cohort (HT-12). None of our 5 cohorts was used to choose the 2 genes. eTable 6 used GSE40396, GSE60244 and the GPL570 part of GSE6269 as external validation; our GSE6269 arrays (GPL96) were not used and lack FAM89A (whether the GPL570 subset shares patients with our GPL96 arrays is not checked). GSE42026 (the same group's 2013 H1N1 cohort) is not mentioned anywhere in the 2016 paper or supplement; patient overlap with the 2016 discovery set is not stated either way.",
+      "verified_by": "Claude (AI), 2026-10-21, main text + supplement; not a human",
+      "supplement": "https://pmc.ncbi.nlm.nih.gov/articles/instance/5997174/bin/NIHMS75938-supplement-Supplementary_files.pdf",
+      "paper_validation_ours": {
+        "GSE40396": "eTable 6: 8 bacterial / 22 viral, AUC 89.2 (75.6-98.3)",
+        "GSE60244": "eTable 6: 15 bacterial / 64 viral (we have 22 / 71), AUC 89.8 (83.4-95.5)",
+        "GSE6269": "eTable 6: GPL570 subset only (12 / 10; probes 204439_at, 226448_at), AUC 96 -- NOT our GPL96 arrays"
+      }
+    },
+    {
+      "name": "sweeney2016_bv7",
+      "paper": "Sweeney, Wong, Khatri, Sci Transl Med 2016;8(346):346ra91, PMID 27384347, doi:10.1126/scitranslmed.aaf7165, https://pmc.ncbi.nlm.nih.gov/articles/PMC5348917/",
+      "genes_bacterial_up": [
+        "HK3",
+        "TNIP1",
+        "GPAA1",
+        "CTSB"
+      ],
+      "genes_viral_up": [
+        "IFI27",
+        "JUP",
+        "LAX1"
+      ],
+      "rule": "geomean",
+      "published_direction": "Table S1 summary effect sizes (viral vs bacterial, Hedges' g, log2): IFI27 +2.299, JUP +1.008, LAX1 +1.114, HK3 -1.109, TNIP1 -1.023, GPAA1 -1.275, CTSB -1.080; fig. S3 forest plots show exactly these 7 genes. Main text Methods: score = 'the geometric mean of the viral response genes minus the geometric mean of the bacterial response genes, times the ratio of the number of genes in each set'. Positive = viral in the paper; we negate it.",
+      "source_table": "Supplement https://pmc.ncbi.nlm.nih.gov/articles/instance/5348917/bin/NIHMS850538-supplement-supplementary_figures_and_tables.pdf: fig. S3 (the 7 genes, discovery cohorts), Table S1 (effect sizes = direction), Table S2 (direct validation incl. GSE60244, GSE63990), fig. S1 (per-cohort counts = ours). Main text Table 1 (cohort roles). Software: MetaIntegrator calculateScore, CRAN v2.1.3 (2020), https://github.com/cran/MetaIntegrator/blob/master/R/calculateScore.R",
+      "scale_ambiguity": "Main: geomean of log2 values, constant ratio factor (changes no AUC). Variants: 'linear' (2^x); 'ratio_one_term' = 0.75 * geomean(bacterial) - geomean(viral) (factor on one term, order as written; 4/3 not run); 'metaintegrator' = calculateScore steps: no ratio factor, shift a cohort by |min|+1 if min < 0, z-score inside each cohort (reads the whole cohort, so not a per-patient frozen score). The package postdates the paper.",
+      "discovery_cohorts_ours": [
+        "GSE6269",
+        "GSE40396",
+        "GSE42026"
+      ],
+      "validation_cohorts_ours": [
+        "GSE60244",
+        "GSE63990"
+      ],
+      "overlap_note": "Table 1A lists GSE6269 GPL96 with exactly our 73 bacterial / 18 viral, GSE40396 (8 bacterial) and GSE42026 (18 / 41) as DISCOVERY sets: the 7 genes were chosen partly on 3 of our 5 cohorts. Only GSE60244 and GSE63990 (Table 1B) are outside its discovery data.",
+      "verified_by": "Claude (AI), 2026-10-21, main text + supplement + MetaIntegrator source; not a human",
+      "supplement": "https://pmc.ncbi.nlm.nih.gov/articles/instance/5348917/bin/NIHMS850538-supplement-supplementary_figures_and_tables.pdf"
+    }
+  ]
+}

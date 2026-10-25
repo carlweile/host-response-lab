@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-21",
+  "plan": "LABBOOK 2026-10-21 PLAN v1.1 (c193407) + supplements PLAN (661ea85)",
+  "seeds": [
+    0,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209
+  ],
+  "variants": {
+    "main": {
+      "collapse": "mean",
+      "linear": false,
+      "ratio_one_term": false,
+      "metaintegrator": false
+    },
+    "linear": {
+      "collapse": "mean",
+      "linear": true,
+      "ratio_one_term": false,
+      "metaintegrator": false
+    },
+    "firstprobe": {
+      "collapse": "first",
+      "linear": false,
+      "ratio_one_term": false,
+      "metaintegrator": false
+    },
+    "ratio_one_term": {
+      "collapse": "mean",
+      "linear": false,
+      "ratio_one_term": true,
+      "metaintegrator": false
+    },
+    "metaintegrator": {
+      "collapse": "mean",
+      "linear": false,
+      "ratio_one_term": false,
+      "metaintegrator": true
+    }
+  },
+  "labelled_per_cohort": {
+    "GSE63990": 185,
+    "GSE42026": 59,
+    "GSE60244": 93,
+    "GSE40396": 30,
+    "GSE6269": 91
+  },
+  "kill_auc": 0.75,
+  "kill_fired": [],
+  "comparison": "results/folds_raw.csv LOCO, fold seed 0, model seed 0"
+}
