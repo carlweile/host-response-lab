@@ -1525,3 +1525,7 @@ verbatim phrases from the 2026-10-23 author reply were paraphrased.
 **Gate:** the repo stays private until the two remaining author groups have had
 about two weeks to reply (~2026-11-06); the switch to public is the author's
 decision alone.
+
+## 2026-10-31 — README bvnGPS row corrected
+
+README bvnGPS row corrected, mirrored from the lab copy: the Prior-art row now states the held-out-cohort and random-split modes, the five shared GSE ids, and the two reasons it is still not the same measurement (two invocations plus a separate scoring script; not runnable as shipped). Source of truth: the 2026-10-30 scoop re-check entry above. No other README text touched; no code or results changed.
