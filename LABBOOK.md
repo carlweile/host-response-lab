@@ -1528,4 +1528,4 @@ decision alone.
 
 ## 2026-10-31 — README bvnGPS row corrected
 
-README bvnGPS row corrected, mirrored from the lab copy: the Prior-art row now states the held-out-cohort and random-split modes, the five shared GSE ids, and the two reasons it is still not the same measurement (two invocations plus a separate scoring script; not runnable as shipped). Source of truth: the 2026-10-30 scoop re-check entry above. No other README text touched; no code or results changed.
+README bvnGPS row corrected, mirrored to the public copy: the Prior-art row now states the held-out-cohort and random-split modes, the five shared GSE ids, and the two reasons it is still not the same measurement (two invocations plus a separate scoring script; not runnable as shipped). Source of truth: the 2026-10-30 scoop re-check entry above. No other README text touched; no code or results changed.
