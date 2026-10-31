@@ -315,7 +315,7 @@ GSM1562133-GSM1562139) carry exactly the surplus over the published counts
 arrays are the re-runs is **inferred, not proven**: GEO has no patient ids, and a
 cross-batch correlation check supports the choice without pinning it.
 
-### Prior art (checked 2026-10-10, deepened the same day)
+### Prior art (checked 2026-10-10, deepened the same day; bvnGPS row corrected 2026-10-30)
 
 This field is mature and commercial. Know this before telling anyone the work is novel.
 
