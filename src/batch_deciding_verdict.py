@@ -14,7 +14,7 @@ NO_COST_SHARE = 0.25     # k_lt / N >= this in every direction = "no batch cost"
 MIN_BACTERIAL = 5        # power gate, per held-out date
 MIN_ARRAYS = 10
 PRIMARY_N = 1000
-CARD_N = 200             # the card's literal count; descriptive only
+CARD_N = 200             # the plan's literal count; descriptive only
 
 
 def tail_counts(obs: float, draws) -> dict:

@@ -45,7 +45,7 @@ def gate0(Xv, yv, cv, cohort) -> tuple[bool, pd.DataFrame]:
 
 
 def balance_only(Xv, yv, cv, cohort, n_seeds: int, g0, t0) -> int:
-    """Card the 10-seed Arm B run (LABBOOK PLAN 'Arm B with 10 LightGBM seeds'): same thresholds, new files only."""
+    """The 10-seed Arm B run (LABBOOK PLAN 'Arm B with 10 LightGBM seeds'): same thresholds, new files only."""
     if n_seeds < 2:
         raise SystemExit("--balance-seeds needs at least 2 for a spread")
     seeds = tuple(range(n_seeds))
@@ -66,7 +66,7 @@ def main(argv=None) -> int:
     ap.add_argument("--gate0-only", action="store_true")
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--balance-seeds", type=int, default=len(SEEDS), metavar="N",
-                    help="LightGBM model seeds 0..N-1 for Arm B; default 3 = the the transfer-matrix run run; "
+                    help="LightGBM model seeds 0..N-1 for Arm B; default 3 = the transfer-matrix run; "
                          "anything else runs Arm B alone and writes the *_10seeds files")
     args = ap.parse_args(argv)
     t0 = time.time()

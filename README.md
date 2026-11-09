@@ -27,8 +27,8 @@ on a hospital it has never seen.
 **So: of a 0.93, how much is biology that travels, and how much is the hospital?**
 
 That gap is measurable from public data, it is reported inconsistently in the
-literature, and when this project started (October 2026) no public code let you
-recompute it in one run. That is the whole contribution: not a better
+literature, and when this project started (October 2026) we found no public code that
+recomputes it in one run. That is the whole contribution: not a better
 classifier, not a new gene signature, not a clinical claim. An engineering and
 reproducibility piece. (Prior art, including the FDA-cleared products and the
 large benchmark that deliberately does *not* measure this, is in section 8.)
@@ -65,8 +65,10 @@ is easy to rig by accident:
    must equal the counts printed in each study's paper, or the pipeline refuses
    to train. Counts are never edited to match the code.
 2. **Every rule is written before the run.** Each experiment's thresholds and
-   verdict words are committed to the LABBOOK first; the run does not get to
-   change them.
+   verdict words are written into the LABBOOK first; the run does not get to
+   change them. Exceptions are disclosed in the entry concerned. The
+   pre-registration commits live in the private working repo, so their timing
+   cannot be checked from this repository's history.
 3. **Tests go red on broken code.** Each of the 211 tests constructs the bug it
    guards against (a co-infection parsed as "bacterial", a test cohort leaking
    into training, a transform that reads other patients) and asserts the guard
@@ -181,7 +183,7 @@ Sources: `results/transfer_matrix.csv`, `results/transfer_sizematched.csv`,
 
 ## 4. What the drop is NOT (closed candidates)
 
-Each line was a pre-registered test with its own control; the LABBOOK entry has
+Each line was a test with its own control, pre-registered unless its entry says otherwise; the LABBOOK entry has
 the rule and the numbers.
 
 | candidate | how it was tested | verdict |
@@ -194,7 +196,7 @@ the rule and the numbers.
 | a whole-cohort normalisation "fix" | synthetic positive controls | the fix is the leak: it reads the test set; not quoted |
 | sample type (PBMC vs whole blood) | GSE6269 is the only PBMC cohort; the 4 whole-blood cohorts re-run without it, same 12,040 genes (`results/whole_blood_check.csv`) | logistic: no detectable effect (held-out mean 0.857 vs 0.866, gap 0.081 vs 0.076); LightGBM: no verdict, see below |
 | age group | GEO fields + paper tables for GSE63990 | cannot be tested with these cohorts |
-| a bug in our pipeline | 3 independent AI code reviews, 211 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
+| a bug in our pipeline | 3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
 
 The sample-type row carries a limit and a side finding. The limit: GSE6269 is
 also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort
@@ -270,7 +272,12 @@ python run_pipeline.py --review             # label candidates + published-count
 python run_pipeline.py --train              # Result 1: both schemes, writes results/ (~1.5 min on a desktop CPU)
 python run_pipeline.py --train --within-sample-normalize   # Result 2
 python run_frozen_signatures.py             # Result 3
-python run_transfer_matrix.py --balance-seeds 10           # Result 4 (~10 min)
+python run_transfer_matrix.py              # Result 4: chip family + 3-seed class weighting (~4 min)
+python run_transfer_matrix.py --balance-seeds 10           # Result 4: class weighting, 10 LightGBM seeds (~10 min)
+python tools/geo_age_check.py               # Result 4: age fields in GEO
+python run_whole_blood_check.py             # sample-type check (~4 min)
+python run_batch_split.py                   # GSE63990 batch split
+python run_batch_deciding.py                # deciding batch test, 1000 draws (~11 min)
 python run_seed_sweep.py                    # 10 fold seeds (~20 min)
 python -m pytest -q                         # 211 tests
 ```

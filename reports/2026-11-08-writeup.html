@@ -83,9 +83,9 @@ a{color:var(--accent)}
 </div>
 
 <h2>1. The question and why it matters</h2>
-<p>A patient arrives with a fever. Bacterial or viral? Antibiotics help one and harm the other. Since about 2007 a line of research reads the patient's own immune response in blood, the genes switched on in white blood cells, and trains a classifier on it. Published areas under the ROC curve (AUC) sit at 0.93 to 0.95, and two such tests are FDA-cleared.</p>
+<p>A patient arrives with a fever. Bacterial or viral? Antibiotics help one and not the other. Since about 2007 a line of research reads the patient's own immune response in blood, the genes switched on in white blood cells, and trains a classifier on it. Published areas under the ROC curve (AUC) sit at 0.93 to 0.95, and two such tests are FDA-cleared.</p>
 <p>Those AUCs are almost always measured by splitting one study's patients at random. Every test patient then shares a hospital, a lab protocol and a microarray chip with the training patients. The model is free to learn those local quirks and is rewarded for it. A real test is used on a hospital it has never seen.</p>
-<p>The gap between those two numbers is measurable from public data, is reported inconsistently in the literature, and in October 2026 no public code computed it in one run. That gap is this project's whole subject. It is not a better classifier, not a new gene signature and not a clinical claim.</p>
+<p>The gap between those two numbers is measurable from public data, is reported inconsistently in the literature, and in October 2026 we found no public code that computed it in one run. That gap is this project's whole subject. It is not a better classifier, not a new gene signature and not a clinical claim.</p>
 
 <h2>2. The design in plain words</h2>
 <p>Five public cohorts from the GEO archive, each from a different study and hospital, all with bacterial or viral labels, all on microarray chips.</p>
@@ -103,7 +103,7 @@ a{color:var(--accent)}
 <li><strong>Random cross-validation.</strong> Patients of all five hospitals are shuffled and split five-fold. This is the number papers usually show.</li>
 <li><strong>Leave-one-cohort-out.</strong> Train on four hospitals, test on the fifth, repeat five times, average. This is the number a new hospital would see.</li>
 </ul>
-<p>Three habits from wet-lab work are enforced in code. <strong>Labels are guilty until verified:</strong> the parser's class counts must equal the counts printed in each paper or the pipeline refuses to train. <strong>Rules before runs:</strong> every experiment's thresholds and verdict words are committed to the lab book before the run, and the run does not get to change them. <strong>Tests go red on broken code:</strong> each test constructs the bug it guards against and asserts the guard fires.</p>
+<p>Three habits from wet-lab work are enforced in code. <strong>Labels are guilty until verified:</strong> the parser's class counts must equal the counts printed in each paper or the pipeline refuses to train. <strong>Rules before runs:</strong> every experiment's thresholds and verdict words are written into the lab book before the run, and the run does not get to change them (exceptions are disclosed in the lab book). <strong>Tests go red on broken code:</strong> each test constructs the bug it guards against and asserts the guard fires.</p>
 
 <h2>3. The four results</h2>
 
@@ -199,7 +199,7 @@ a{color:var(--accent)}
 </ul>
 
 <h2>4. What the drop is not</h2>
-<p>Each line was a pre-registered test with its own control; the lab book entry has the rule and the numbers.</p>
+<p>Each line was a test with its own control, pre-registered unless its lab book entry says otherwise; the lab book entry has the rule and the numbers.</p>
 <div class="tw"><table>
 <thead><tr><th>candidate</th><th>how it was tested</th><th>verdict</th></tr></thead>
 <tbody>
@@ -211,7 +211,7 @@ a{color:var(--accent)}
 <tr><td>a whole-cohort normalisation "fix"</td><td>synthetic positive controls</td><td><span class="verdict">no</span> the fix is the leak; it reads the test set</td></tr>
 <tr><td>sample type (PBMC vs whole blood)</td><td>GSE6269 is the only PBMC cohort; the 4 whole-blood cohorts re-run without it, same 12,040 genes</td><td><span class="verdict">no, logistic</span> held-out mean 0.857 vs 0.866, gap 0.081 vs 0.076; LightGBM no verdict (see note)</td></tr>
 <tr><td>age group</td><td>GEO fields + paper tables for GSE63990</td><td><span class="verdict open">cannot be tested</span> with these cohorts</td></tr>
-<tr><td>a bug in our pipeline</td><td>3 independent AI code reviews, 211 red-on-bug tests, 4 identical end-to-end re-runs</td><td><span class="verdict">none found</span> that changes a committed number</td></tr>
+<tr><td>a bug in our pipeline</td><td>3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs</td><td><span class="verdict">none found</span> that changes a committed number</td></tr>
 </tbody></table></div>
 <p>The sample-type row carries a limit and a side finding. The limit: GSE6269 is also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort "PBMC" cannot be separated from "that one cohort". The side finding, LightGBM only: without GSE6269 in the training set the tree model becomes anti-predictive on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over three seeds, from 0.84 with it); the other three whole-blood cohorts barely move. Read it as training-set composition, not as sample type.</p>
 <h3>Where the cause could still hide</h3>
@@ -260,7 +260,12 @@ python run_pipeline.py --review       # label parse + published-count check: ver
 python run_pipeline.py --train        # Result 1, both schemes (~1.5 min, CPU)
 python run_pipeline.py --train --within-sample-normalize    # Result 2
 python run_frozen_signatures.py       # Result 3
-python run_transfer_matrix.py --balance-seeds 10            # Result 4
+python run_transfer_matrix.py         # Result 4: chip family + 3-seed weighting
+python run_transfer_matrix.py --balance-seeds 10            # Result 4: 10 LightGBM seeds
+python tools/geo_age_check.py         # age fields in GEO
+python run_whole_blood_check.py       # sample-type check
+python run_batch_split.py             # GSE63990 batch split
+python run_batch_deciding.py          # deciding batch test, 1000 draws
 python -m pytest -q                   # 211 tests</code></pre>
 <p>No GPU is used anywhere. <code>results/</code> is committed, so every number above can be diffed against a re-run, and each runner reports its own reproduction gate before writing anything new.</p>
 

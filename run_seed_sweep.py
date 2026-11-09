@@ -82,7 +82,7 @@ def compare_modelseed(raw_csv: Path, ws_csv: Path, on_file_ws: float) -> dict:
 
 
 def modelseed_check(X, y, cohort) -> int:
-    """Card the LightGBM model-seed check: within-sample LightGBM LOCO over model seeds; writes only its own two files."""
+    """The LightGBM model-seed check: within-sample LightGBM LOCO over model seeds; writes only its own two files."""
     t0, w0 = time.process_time(), time.time()
     ref = pd.read_csv(rp.RESULTS / "summary_withinsample.csv")
     on_file = float(ref[(ref["model"] == "lightgbm") & (ref["scheme"] == "leave_one_cohort_out")]["mean_auc"].iloc[0])

@@ -1,6 +1,6 @@
 """Deciding test of the batch cause (LABBOOK 2026-11-08 PLAN, the deciding batch test).
 
-Arm A reuses the the batch-split run code path unchanged (`batch_split.run_control` with more draws).
+Arm A reuses the batch-split run's code path unchanged (`batch_split.run_control` with more draws).
 Arm B (GSE40396, leave-one-date-out) is guarded by the power gate: `run_arm_b` raises before
 any fit if the gate fails, so a bypass is impossible rather than merely forbidden.
 """
