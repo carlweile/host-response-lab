@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-08",
+  "plan_commit": "4531829",
+  "card": "the batch-split run",
+  "gate0": {
+    "max_abs_diff": 0.0004968944099380534,
+    "diffs": {
+      "logistic_l2": 0.0004968944099380534,
+      "lightgbm": 0.0
+    },
+    "tolerance": 0.005
+  },
+  "gate_b": {
+    "mean_auc": 1.0,
+    "pooled_auc": 1.0,
+    "fold_aucs": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "bar": 0.8
+  },
+  "batch_counts": {
+    "batch0_viral": 88,
+    "batch0_bacterial": 58,
+    "batch1_viral": 27,
+    "batch1_bacterial": 12
+  },
+  "summary": {
+    "raw": {
+      "b0_to_b1": {
+        "batch_out_auc": 0.8487654320987654,
+        "control_mean": 0.957253086419753,
+        "control_min": 0.8919753086419753,
+        "control_max": 1.0,
+        "control_sd": 0.03655023102650257
+      },
+      "b1_to_b0": {
+        "batch_out_auc": 0.8853840125391849,
+        "control_mean": 0.9242065047021943,
+        "control_min": 0.8579545454545455,
+        "control_max": 0.9482758620689655,
+        "control_sd": 0.020677284602229878
+      }
+    },
+    "within_sample": {
+      "b0_to_b1": {
+        "batch_out_auc": 0.8580246913580247,
+        "control_mean": 0.9584876543209877,
+        "control_min": 0.8858024691358025,
+        "control_max": 1.0,
+        "control_sd": 0.034346662182196716
+      },
+      "b1_to_b0": {
+        "batch_out_auc": 0.7697884012539185,
+        "control_mean": 0.9295846394984325,
+        "control_min": 0.8620689655172414,
+        "control_max": 0.95826802507837,
+        "control_sd": 0.02321691277503346
+      }
+    }
+  },
+  "delta_raw": {
+    "b0_to_b1": 0.10848765432098761,
+    "b1_to_b0": 0.03882249216300948
+  },
+  "delta_within_sample": {
+    "b0_to_b1": 0.10046296296296275,
+    "b1_to_b0": 0.15979623824451406
+  },
+  "below_all_20_raw": {
+    "b0_to_b1": true,
+    "b1_to_b0": false
+  },
+  "lightgbm_raw_ranges_seeds_0_2": {
+    "b0_to_b1": {
+      "min": 0.7191358024691358,
+      "max": 0.7253086419753086
+    },
+    "b1_to_b0": {
+      "min": 0.8987068965517243,
+      "max": 0.9038009404388715
+    }
+  },
+  "comparators": {
+    "overall_logistic_gap": 0.0759056322022987,
+    "own_heldout_loss": 0.03291925465838519
+  },
+  "verdicts": {
+    "gate_b": "pass",
+    "r_batch": "undecided",
+    "r_scale": "not evaluated"
+  },
+  "runtime_s": 22.8
+}

@@ -1,0 +1,273 @@
+<title>Host Response Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with full-width tables; a lab-notebook register, not a dashboard. */
+:root{
+  --bg:#f7f8f6; --surface:#ffffff; --fg:#1d2420; --muted:#5b6660; --line:#d8ded9;
+  --accent:#1f6f78; --accent-soft:#e3eff0; --mark-a:#1f6f78; --mark-b:#b8641b;
+  --warn-soft:#f6ecd9; --code-bg:#eef1ee;
+  --display:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,"Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151a18; --surface:#1d2320; --fg:#e6ebe8; --muted:#a2ada7; --line:#33403a;
+  --accent:#6fc0c8; --accent-soft:#1d3336; --mark-a:#6fc0c8; --mark-b:#e59a4f;
+  --warn-soft:#3a2f1c; --code-bg:#232a27; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151a18; --surface:#1d2320; --fg:#e6ebe8; --muted:#a2ada7; --line:#33403a;
+  --accent:#6fc0c8; --accent-soft:#1d3336; --mark-a:#6fc0c8; --mark-b:#e59a4f;
+  --warn-soft:#3a2f1c; --code-bg:#232a27; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+.wrap{max-width:760px;margin:0 auto}
+header{padding-block:40px 24px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,5vw,40px);line-height:1.15;margin:8px 0 12px;text-wrap:balance}
+.lede{font-size:18px;color:var(--muted);max-width:62ch}
+h2{font-family:var(--display);font-weight:600;font-size:24px;margin:44px 0 12px;text-wrap:balance}
+h3{font-size:17px;font-weight:600;margin:28px 0 8px}
+p{max-width:68ch;margin:0 0 12px}
+.answer{background:var(--accent-soft);border-left:3px solid var(--accent);padding:14px 18px;margin:20px 0;max-width:68ch}
+.answer p{margin:0}
+.answer strong{color:var(--accent)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+.tile{background:var(--surface);border:1px solid var(--line);padding:12px 14px;min-width:0}
+.tile .n{font-family:var(--display);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:13px;color:var(--muted);margin-top:4px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums;margin:12px 0}
+.tw{overflow-x:auto;min-width:0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;letter-spacing:.03em;text-transform:uppercase}
+td.num,th.num{text-align:right}
+.verdict{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.verdict.open{background:var(--warn-soft);color:var(--fg)}
+figure{margin:20px 0;background:var(--surface);border:1px solid var(--line);padding:16px}
+figcaption{font-size:13px;color:var(--muted);margin-top:8px;max-width:68ch}
+svg{max-width:100%;height:auto;display:block}
+svg text{font-family:var(--body);fill:var(--fg)}
+svg .ax{fill:var(--muted);font-size:11px}
+svg .grid{stroke:var(--line);stroke-width:1}
+svg .lab{font-size:12.5px}
+svg .val{font-size:11.5px;fill:var(--muted)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:4px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.legend .a::before{background:var(--mark-a)}
+.legend .b::before{background:var(--surface);border:2px solid var(--mark-b);box-sizing:border-box}
+pre{background:var(--code-bg);padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.5;border:1px solid var(--line)}
+code{font-family:var(--mono);font-size:.92em;background:var(--code-bg);padding:1px 4px}
+pre code{background:none;padding:0}
+ul{padding-left:20px;max-width:68ch}
+li{margin-bottom:6px}
+.small{font-size:13.5px;color:var(--muted)}
+a{color:var(--accent)}
+.foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media (max-width:480px){h2{font-size:21px} body{font-size:15px}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Write-up · 8 November 2026 · public data, CPU only</div>
+  <h1>How much of a published diagnostic AUC survives a hospital the model has never seen?</h1>
+  <p class="lede">A small reproduction study on blood gene-expression data for the bacterial-versus-viral question. One command computes the optimistic number and the honest number from the same data and prints the gap between them.</p>
+</header>
+
+<div class="answer"><p><strong>Answer.</strong> Of a random cross-validation AUC of about 0.96, about <strong>0.88</strong> survives an unseen hospital on the raw scale and about <strong>0.89</strong> survives with a bedside-legal per-patient transform. Roughly 7 to 12 AUC points of the headline are hospital-specific. The drop is not a lucky split, not the chip family, not class weighting, and not a pipeline bug anyone has found. Its cause stays unattributed with five cohorts.</p></div>
+
+<div class="tiles">
+  <div class="tile"><div class="n">5</div><div class="l">public cohorts, 5 hospitals, 2 chip families</div></div>
+  <div class="tile"><div class="n">458</div><div class="l">patient arrays, 12,040 shared genes</div></div>
+  <div class="tile"><div class="n">211</div><div class="l">tests, each red on the bug it guards</div></div>
+  <div class="tile"><div class="n">4</div><div class="l">identical end-to-end re-runs, one by the author from a fresh download</div></div>
+</div>
+
+<h2>1. The question and why it matters</h2>
+<p>A patient arrives with a fever. Bacterial or viral? Antibiotics help one and harm the other. Since about 2007 a line of research reads the patient's own immune response in blood, the genes switched on in white blood cells, and trains a classifier on it. Published areas under the ROC curve (AUC) sit at 0.93 to 0.95, and two such tests are FDA-cleared.</p>
+<p>Those AUCs are almost always measured by splitting one study's patients at random. Every test patient then shares a hospital, a lab protocol and a microarray chip with the training patients. The model is free to learn those local quirks and is rewarded for it. A real test is used on a hospital it has never seen.</p>
+<p>The gap between those two numbers is measurable from public data, is reported inconsistently in the literature, and in October 2026 no public code computed it in one run. That gap is this project's whole subject. It is not a better classifier, not a new gene signature and not a clinical claim.</p>
+
+<h2>2. The design in plain words</h2>
+<p>Five public cohorts from the GEO archive, each from a different study and hospital, all with bacterial or viral labels, all on microarray chips.</p>
+<div class="tw"><table>
+<thead><tr><th>cohort</th><th>study</th><th>chip family</th><th>age group</th><th class="num">bacterial</th><th class="num">viral</th></tr></thead>
+<tbody>
+<tr><td>GSE63990</td><td>Tsalik 2016</td><td>Affymetrix</td><td>mixed, 6–88 y</td><td class="num">70</td><td class="num">115</td></tr>
+<tr><td>GSE42026</td><td>Herberg 2013</td><td>Illumina</td><td>children</td><td class="num">18</td><td class="num">41</td></tr>
+<tr><td>GSE60244</td><td>Suarez 2015</td><td>Illumina</td><td>adults</td><td class="num">22</td><td class="num">71</td></tr>
+<tr><td>GSE40396</td><td>Hu 2013</td><td>Illumina</td><td>children</td><td class="num">8</td><td class="num">22</td></tr>
+<tr><td>GSE6269</td><td>Ramilo 2007</td><td>Affymetrix</td><td>children</td><td class="num">73</td><td class="num">18</td></tr>
+</tbody></table></div>
+<p>Two models, an L2 logistic regression and a LightGBM gradient-boosted tree, both class-weighted, no gene selection anywhere, are trained and scored two ways on exactly the same matrix:</p>
+<ul>
+<li><strong>Random cross-validation.</strong> Patients of all five hospitals are shuffled and split five-fold. This is the number papers usually show.</li>
+<li><strong>Leave-one-cohort-out.</strong> Train on four hospitals, test on the fifth, repeat five times, average. This is the number a new hospital would see.</li>
+</ul>
+<p>Three habits from wet-lab work are enforced in code. <strong>Labels are guilty until verified:</strong> the parser's class counts must equal the counts printed in each paper or the pipeline refuses to train. <strong>Rules before runs:</strong> every experiment's thresholds and verdict words are committed to the lab book before the run, and the run does not get to change them. <strong>Tests go red on broken code:</strong> each test constructs the bug it guards against and asserts the guard fires.</p>
+
+<h2>3. The four results</h2>
+
+<h3>Result 1 · about 7 to 12 AUC points are hospital-specific</h3>
+<figure>
+<svg viewBox="0 0 680 230" role="img" aria-label="Dumbbell chart: random-CV AUC versus leave-one-cohort-out AUC for four model and scale combinations">
+  <!-- x scale: 0.78 -> 0.98 maps to 230 -> 650 (2100 px per unit) -->
+  <g class="ax">
+    <line class="grid" x1="230" y1="20" x2="230" y2="190"/><text x="230" y="208" text-anchor="middle">0.78</text>
+    <line class="grid" x1="335" y1="20" x2="335" y2="190"/><text x="335" y="208" text-anchor="middle">0.83</text>
+    <line class="grid" x1="440" y1="20" x2="440" y2="190"/><text x="440" y="208" text-anchor="middle">0.88</text>
+    <line class="grid" x1="545" y1="20" x2="545" y2="190"/><text x="545" y="208" text-anchor="middle">0.93</text>
+    <line class="grid" x1="650" y1="20" x2="650" y2="190"/><text x="650" y="208" text-anchor="middle">0.98</text>
+    <text x="440" y="226" text-anchor="middle">AUC</text>
+  </g>
+  <!-- row 1 logistic raw: held-out 0.881 -> 442.1 ; rCV 0.957 -> 601.7 -->
+  <g>
+    <text class="lab" x="0" y="48">logistic L2, raw</text>
+    <line x1="442" y1="44" x2="602" y2="44" stroke="var(--muted)" stroke-width="2"/>
+    <circle cx="442" cy="44" r="6" fill="var(--surface)" stroke="var(--mark-b)" stroke-width="2.5"/>
+    <circle cx="602" cy="44" r="6" fill="var(--mark-a)"/>
+    <text class="val" x="434" y="36" text-anchor="end">0.881</text>
+    <text class="val" x="610" y="36">0.957</text>
+    <text class="val" x="522" y="36" text-anchor="middle">gap 0.076</text>
+  </g>
+  <!-- row 2 lightgbm raw: 0.827 -> 328.7 ; 0.954 -> 595.4 -->
+  <g>
+    <text class="lab" x="0" y="92">LightGBM, raw</text>
+    <line x1="329" y1="88" x2="595" y2="88" stroke="var(--muted)" stroke-width="2"/>
+    <circle cx="329" cy="88" r="6" fill="var(--surface)" stroke="var(--mark-b)" stroke-width="2.5"/>
+    <circle cx="595" cy="88" r="6" fill="var(--mark-a)"/>
+    <text class="val" x="321" y="80" text-anchor="end">0.827</text>
+    <text class="val" x="603" y="80">0.954</text>
+    <text class="val" x="462" y="80" text-anchor="middle">gap 0.127</text>
+  </g>
+  <!-- row 3 logistic within-sample: 0.895 -> 471.5 ; 0.963 -> 614.3 -->
+  <g>
+    <text class="lab" x="0" y="136">logistic L2, per-patient ranks</text>
+    <line x1="472" y1="132" x2="614" y2="132" stroke="var(--muted)" stroke-width="2"/>
+    <circle cx="472" cy="132" r="6" fill="var(--surface)" stroke="var(--mark-b)" stroke-width="2.5"/>
+    <circle cx="614" cy="132" r="6" fill="var(--mark-a)"/>
+    <text class="val" x="464" y="124" text-anchor="end">0.895</text>
+    <text class="val" x="622" y="124">0.963</text>
+    <text class="val" x="543" y="124" text-anchor="middle">gap 0.068</text>
+  </g>
+  <!-- row 4 lightgbm within-sample: 0.888 -> 456.8 ; 0.958 -> 603.8 -->
+  <g>
+    <text class="lab" x="0" y="180">LightGBM, per-patient ranks</text>
+    <line x1="457" y1="176" x2="604" y2="176" stroke="var(--muted)" stroke-width="2"/>
+    <circle cx="457" cy="176" r="6" fill="var(--surface)" stroke="var(--mark-b)" stroke-width="2.5"/>
+    <circle cx="604" cy="176" r="6" fill="var(--mark-a)"/>
+    <text class="val" x="449" y="168" text-anchor="end">0.888</text>
+    <text class="val" x="612" y="168">0.958</text>
+    <text class="val" x="530" y="168" text-anchor="middle">gap 0.070</text>
+  </g>
+</svg>
+<div class="legend"><span class="a">random cross-validation (hospitals mixed)</span><span class="b">leave-one-cohort-out (unseen hospital)</span></div>
+<figcaption>Mean AUC over 5 folds at fold seed 0, 458 arrays. The gap over 10 fold seeds: raw 0.073 ± 0.004 (logistic) and 0.123 ± 0.006 (LightGBM); per-patient ranks 0.065 ± 0.003 and 0.067 ± 0.004. Sources: results/summary_raw.csv, summary_withinsample.csv, seedsweep_*_summary.csv.</figcaption>
+</figure>
+<p>Both models look like a 0.95 test when the hospitals are mixed. On an unseen hospital the logistic model is a 0.88 test and the tree model a 0.83 test. The gap is positive in all 10 fold seeds and, read hospital by hospital, positive in all five for both models. The flexible model pays more, and it also carries its own randomness: over 10 model seeds LightGBM's held-out AUC moves between 0.780 and 0.861, so its gap reads as "clearly larger than logistic, size uncertain". The logistic model is deterministic.</p>
+<div class="tw"><table>
+<thead><tr><th>held-out hospital</th><th class="num">logistic, raw</th><th class="num">LightGBM, raw</th></tr></thead>
+<tbody>
+<tr><td>GSE63990 (Tsalik, 185 arrays)</td><td class="num">0.926</td><td class="num">0.893</td></tr>
+<tr><td>GSE6269 (Ramilo, 91)</td><td class="num">0.938</td><td class="num">0.703</td></tr>
+<tr><td>GSE42026 (Herberg, 59)</td><td class="num">0.832</td><td class="num">0.896</td></tr>
+<tr><td>GSE60244 (Suarez, 93)</td><td class="num">0.844</td><td class="num">0.809</td></tr>
+<tr><td>GSE40396 (Hu, 30)</td><td class="num">0.864</td><td class="num">0.835</td></tr>
+</tbody></table></div>
+<p class="small">Per-cohort leave-one-cohort-out AUC, model seed 0, results/folds_raw.csv.</p>
+
+<h3>Result 2 · a bedside-legal transform gives back 1 point (logistic) or 6 points (LightGBM)</h3>
+<p>Most published pipelines normalise a gene against the other patients of the same cohort. A bedside test sees one patient at a time, so that is not allowed here. Instead each patient's 12,040 genes are ranked against each other only; no other patient is read, in training or test. The gap does not vanish (third and fourth rows of the chart). For logistic it shrinks by about one point. For LightGBM it shrinks by about six, and that six survives LightGBM's own randomness: over 10 paired model seeds the per-patient run beat the raw run every time, mean gain +0.064, range +0.027 to +0.112, held-out 0.891 ± 0.006.</p>
+<p>A whole-cohort rank normalisation would make the gap look closed. It was shown on synthetic data to be a transductive artefact, meaning it reads the test set, and its numbers are not quoted anywhere.</p>
+
+<h3>Result 3 · frozen published signatures have no random-CV bonus</h3>
+<p>If the gap comes from a model learning hospital quirks, a gene score that is <em>not fitted</em> on these data should show no gap. Two published scores were used exactly as printed in their papers and supplements: Herberg 2016 (two genes) and Sweeney 2016 (seven genes).</p>
+<div class="tw"><table>
+<thead><tr><th>score</th><th class="num">cohorts</th><th class="num">random-CV</th><th class="num">held-out</th><th class="num">gap, 10 seeds</th><th class="num">our logistic / LightGBM, same cohorts</th></tr></thead>
+<tbody>
+<tr><td>Herberg 2-gene</td><td class="num">3</td><td class="num">0.876</td><td class="num">0.882</td><td class="num">−0.004 ± 0.005</td><td class="num">0.846 / 0.847</td></tr>
+<tr><td>Sweeney 7-gene</td><td class="num">5</td><td class="num">0.837</td><td class="num">0.912</td><td class="num">−0.075 ± 0.002</td><td class="num">0.881 / 0.827</td></tr>
+<tr><td>Sweeney, only its 2 independent cohorts</td><td class="num">2</td><td class="num">— (not computed)</td><td class="num">0.901</td><td class="num">—</td><td class="num">0.885 / 0.851</td></tr>
+</tbody></table></div>
+<p>The frozen scores have no random-CV advantage; the pooled number is the same or lower because each cohort puts a fixed score on its own offset. Held out, they do about as well as or slightly better than the trained logistic model. This fits the reading that the Result-1 gap comes from fitting; it does not prove it. Limits: Herberg's gene FAM89A has no probe on two of the five chips, so it is scored on three cohorts, and Sweeney's own paper lists three of our five cohorts among those its genes were chosen on. One of the Sweeney authors confirmed our reading of their score by e-mail.</p>
+
+<h3>Result 4 · the drop is not the chip family, and class weighting is not where it lives</h3>
+<p>The held-out AUC differs by hospital. Does the size of the drop follow something we can name? Three candidates were pre-registered: chip family, age group, class mix. Before any of this ran, the new code had to reproduce all ten on-file held-out AUCs to within 0.005 (largest difference 0.0006).</p>
+<ul>
+<li><strong>Chip family: no.</strong> On all 20 ordered train-on-one / test-on-one cohort pairs (logistic, raw), same-family pairs transferred <em>worse</em> than cross-family pairs: mean AUC 0.760 vs 0.821, difference −0.061. With every training cohort cut to 30 arrays (20 random draws) the difference is −0.062, so it is not that the Illumina cohorts are small. Per-patient ranks −0.034; LightGBM −0.11 at each of three seeds.</li>
+<li><strong>Class weighting: not where the drop lives.</strong> Leave-one-cohort-out with weighting switched off moves the mean held-out AUC by +0.0005 (logistic) and +0.003 (LightGBM, 10 model seeds; per-seed range −0.029 to +0.032). A first 3-seed read gave +0.0195 and "undecided"; ten seeds showed that was seed luck.</li>
+<li><strong>Age: not testable from public sources.</strong> GSE63990 mixes ages 6 to 88, and neither GEO (0 of 280 arrays carry an age) nor the paper gives per-patient ages.</li>
+</ul>
+
+<h2>4. What the drop is not</h2>
+<p>Each line was a pre-registered test with its own control; the lab book entry has the rule and the numbers.</p>
+<div class="tw"><table>
+<thead><tr><th>candidate</th><th>how it was tested</th><th>verdict</th></tr></thead>
+<tbody>
+<tr><td>a lucky random split</td><td>10 fold seeds, raw and per-patient ranks</td><td><span class="verdict">no</span> gap above 0.06 in every seed, both models</td></tr>
+<tr><td>LightGBM's own randomness</td><td>10 model seeds, raw and per-patient ranks, paired</td><td><span class="verdict">no</span> moves the level, not the sign of the gap or the 6-point give-back</td></tr>
+<tr><td>7 re-run arrays in GSE63990</td><td>removed and re-run</td><td><span class="verdict">no</span> removing them made the gap slightly larger</td></tr>
+<tr><td>chip family</td><td>20 single-cohort transfer pairs + size-matched control</td><td><span class="verdict">no</span> same-family pairs transfer worse</td></tr>
+<tr><td>class weighting</td><td>leave-one-cohort-out with weighting off, 10 LightGBM seeds</td><td><span class="verdict">no</span> mean moves by under 0.01 for both models</td></tr>
+<tr><td>a whole-cohort normalisation "fix"</td><td>synthetic positive controls</td><td><span class="verdict">no</span> the fix is the leak; it reads the test set</td></tr>
+<tr><td>sample type (PBMC vs whole blood)</td><td>GSE6269 is the only PBMC cohort; the 4 whole-blood cohorts re-run without it, same 12,040 genes</td><td><span class="verdict">no, logistic</span> held-out mean 0.857 vs 0.866, gap 0.081 vs 0.076; LightGBM no verdict (see note)</td></tr>
+<tr><td>age group</td><td>GEO fields + paper tables for GSE63990</td><td><span class="verdict open">cannot be tested</span> with these cohorts</td></tr>
+<tr><td>a bug in our pipeline</td><td>3 independent AI code reviews, 211 red-on-bug tests, 4 identical end-to-end re-runs</td><td><span class="verdict">none found</span> that changes a committed number</td></tr>
+</tbody></table></div>
+<p>The sample-type row carries a limit and a side finding. The limit: GSE6269 is also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort "PBMC" cannot be separated from "that one cohort". The side finding, LightGBM only: without GSE6269 in the training set the tree model becomes anti-predictive on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over three seeds, from 0.84 with it); the other three whole-blood cohorts barely move. Read it as training-set composition, not as sample type.</p>
+<h3>Where the cause could still hide</h3>
+<p class="small">Checked against the per-sample fields in the cached GEO series matrices, 8 November 2026.</p>
+<div class="tw"><table>
+<thead><tr><th>group</th><th>candidate</th><th>status</th></tr></thead>
+<tbody>
+<tr><td>tested, ruled out</td><td>lucky split · chip family · class weighting · the 7 re-run arrays · sample type (logistic)</td><td>table above</td></tr>
+<tr><td rowspan="4">checkable from GEO metadata, not yet tested</td><td>blood tube: PAXgene (GSE42026, GSE63990) vs Tempus (GSE40396, GSE60244); GSE6269 is PBMC, no tube</td><td>not testable on its own: tube is confounded with cohort (each cohort used one tube type)</td></tr>
+<tr><td>lab batch: GSE63990 <code>batch</code> 0/1; GSE40396 <code>sentrix barcode</code> + <code>hybridization date</code> (3 dates)</td><td>GSE63990 batch split (run 8 Nov): verdict <strong>undecided</strong>. Batch is fully visible in the values (batch-AUC 1.000). Train batch 0 / test batch 1: AUC 0.849 vs 0.957 for 20 size- and class-matched mixed splits, Δ 0.108, below all 20. Reverse: 0.885 vs 0.924, Δ 0.039, inside the control spread. Per-patient ranking did not close it. Power limit: the small side has 39 arrays, 12 bacterial. <strong>Deciding test (run 8 Nov, 1000 size- and class-matched mixed-split draws): still undecided.</strong> Train batch 0 / test batch 1: AUC 0.849, null mean 0.961, 4 of 1000 draws at or below it (0.4 %). Train batch 1 / test batch 0: AUC 0.885, null mean 0.920, 121 of 1000 at or below it (12.1 %, interval 10.2-14.3 %). So the batch costs AUC clearly in one direction only. GSE40396 hybridization dates: underpowered, not run (bacterial arrays per date 0, 0 and 8; all 8 bacterial arrays sit on one date). The drop stays unattributed</td></tr>
+<tr><td>sex: in GEO for 4 of 5 cohorts (all but GSE63990)</td><td>not tested</td></tr>
+<tr><td>age: in GEO for 3 of 5 (GSE40396 in months, GSE60244 in years, GSE6269 <code>Age: 10 y</code>); not for GSE42026 or GSE63990</td><td>the children/adults grid still fails on GSE63990</td></tr>
+<tr><td>not in the public data</td><td>days since symptom onset · illness severity · ward vs ICU · how the bacterial/viral label was adjudicated (GSE6269 lists <code>illness</code> and antibiotic <code>treatment</code>, the others nothing)</td><td>cannot be tested from GEO</td></tr>
+</tbody></table></div>
+<p>What remains: with five cohorts the drop is a pattern, not a cause. It stays unattributed. The batch split of the one cohort with two documented array batches has been run: a within-hospital batch costs AUC in one direction only, so it is a partial candidate, not a cause.</p>
+
+<h2>5. Honest limits</h2>
+<ul>
+<li><strong>Flattered by exclusions.</strong> Co-infections and non-infectious inflammation are excluded, not modelled. Several published papers do the same; it makes everyone's numbers look better than an emergency department.</li>
+<li><strong>Five cohorts, 458 arrays.</strong> Roughly a tenth of the largest published comparison. Enough to measure a gap, not enough to name its cause.</li>
+<li><strong>Microarray only.</strong> Nothing here is checked on RNA-seq.</li>
+<li><strong>Labels are machine-parsed.</strong> Published counts match for all five cohorts, but only two of the five count checks were done by a human; the other three are AI-verified against the papers. No author of an original cohort has read the label table.</li>
+<li><strong>Which GSE63990 arrays are the re-runs is inferred</strong>, not proven; GEO has no patient ids.</li>
+<li><strong>Not a clinical failure rate.</strong> The FDA-cleared TriVerity test was validated prospectively in 1,222 patients at 22 sites (Nature Medicine 2025); its numbers are not comparable to these.</li>
+<li><strong>Per-patient ranking still needs a whole gene profile</strong>, which a 2- or 7-gene bedside assay does not have.</li>
+</ul>
+
+<h2>6. Who did what</h2>
+<p>This repo was built with an AI coding assistant (Claude Code) directed by the author, a molecular biologist. The honest split, from the lab book record:</p>
+<div class="tw"><table>
+<thead><tr><th>item</th><th>done by</th><th>judged by</th></tr></thead>
+<tbody>
+<tr><td>question, scope, the frozen five-cohort set, every label-rule decision, every go/no-go</td><td>the author</td><td>the author</td></tr>
+<tr><td>pipeline code, tests, all runs, lab book entries</td><td>the AI, directed by the author</td><td>3 outside AI code reviews (two other vendors' models and a blind Claude agent); every finding fixed with a red test, rejected with a reason checked on the data, or left with its limit stated</td></tr>
+<tr><td>published class counts</td><td>the AI from the papers; two cohorts re-checked by the author</td><td>author for 2 of 5, AI-only for 3 of 5</td></tr>
+<tr><td>every result sentence</td><td>AI drafted, author approved</td><td>a blind fresh agent re-derives the numbers from the CSVs; pre-registered thresholds decide the verdict word</td></tr>
+<tr><td>reproducibility</td><td>—</td><td>the author re-ran the whole pipeline from a fresh GEO download on their own machine: all four headline AUCs identical to the last digit</td></tr>
+<tr><td>Sweeney score reading</td><td>the AI from paper, supplement and the authors' R code</td><td>confirmed by one of the score's authors by e-mail</td></tr>
+</tbody></table></div>
+<p>Still open before anyone should rely on this: a human code review, and an author of one of the original cohorts reading the label table.</p>
+
+<h2>7. Reproduce it</h2>
+<pre><code>python -m pip install -r requirements.txt
+python run_pipeline.py --fetch        # the 5 GEO series into data/ (once, ~120 MB)
+python run_pipeline.py --review       # label parse + published-count check: verified 5/5
+python run_pipeline.py --train        # Result 1, both schemes (~1.5 min, CPU)
+python run_pipeline.py --train --within-sample-normalize    # Result 2
+python run_frozen_signatures.py       # Result 3
+python run_transfer_matrix.py --balance-seeds 10            # Result 4
+python -m pytest -q                   # 211 tests</code></pre>
+<p>No GPU is used anywhere. <code>results/</code> is committed, so every number above can be diffed against a re-run, and each runner reports its own reproduction gate before writing anything new.</p>
+
+<h2>8. Prior art, and the one paragraph that justifies the repo</h2>
+<p>The field is mature and commercial: Inflammatix TriVerity (29 genes, FDA-cleared January 2025, prospective validation in Nature Medicine 2025), MeMed BV (3 proteins, FDA-cleared), the Bodkin et al. 2022 comparison of 28 signatures across 51 datasets, the Chawla et al. 2022 robustness benchmark, and the MetaIntegrator R package with leave-one-dataset-out built in. The method here is not new.</p>
+<p>Bodkin et al. answers a different question. They fitted a fresh model inside each dataset separately and cross-validated within it, stating that "creating dataset-specific models overcomes batch effects since each signature is optimized in each dataset". Sound for their question, but it removes the batch effect by construction instead of measuring it, and the paper reports no discovery-versus-external drop. Well-resourced groups do cross-cohort validation in primary papers, but their pipelines are not public.</p>
+<p><strong>The contribution that survives scrutiny:</strong> a small, public, runnable implementation where one command computes the optimistic number and the cohort-held-out number from the same data, the label parsing checks itself against published counts, and every verdict was written down before the run.</p>
+
+<div class="foot">Repository README and LABBOOK carry every number with its source file. Public code: github.com/carlweile/host-response-lab. This page: reports/2026-11-08-writeup.html.</div>
+</div>

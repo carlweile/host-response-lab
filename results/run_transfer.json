@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-05",
+  "plan_commits": [
+    "c7202b2",
+    "fb2b99b"
+  ],
+  "gate0_max_abs_diff": 0.000640204865557048,
+  "n_samples": 458,
+  "n_genes": 12040,
+  "platform_cells": {
+    "same": 8,
+    "cross": 12
+  },
+  "age_testable": false,
+  "age_tags": {
+    "GSE63990": "mixed",
+    "GSE42026": "children",
+    "GSE60244": "adults",
+    "GSE40396": "children",
+    "GSE6269": "children"
+  },
+  "family_tags": {
+    "GSE63990": "affymetrix",
+    "GSE42026": "illumina",
+    "GSE60244": "illumina",
+    "GSE40396": "illumina",
+    "GSE6269": "affymetrix"
+  },
+  "platform": {
+    "main_diff": -0.060871232645403395,
+    "sizematched_diff": -0.06166042238789038,
+    "within_sample_diff": -0.03436559575692244,
+    "same_mean": 0.7602834953545436,
+    "cross_mean": 0.821154727999947,
+    "lightgbm_diff_by_seed": [
+      -0.11435715515325762,
+      -0.1106436701469572,
+      -0.10765645322375517
+    ]
+  },
+  "age": {
+    "main_diff": NaN,
+    "sizematched_diff": NaN
+  },
+  "balance_delta": {
+    "logistic_l2": 0.00047671652316985116,
+    "logistic_l2_per_cohort": {
+      "GSE40396": 0.0,
+      "GSE42026": 0.0013550135501354532,
+      "GSE60244": 0.000640204865557048,
+      "GSE6269": 0.0007610350076102668,
+      "GSE63990": -0.00037267080745351233
+    },
+    "lightgbm": 0.019489534755790693,
+    "lightgbm_per_cohort": {
+      "GSE40396": 0.0018939393939394478,
+      "GSE42026": 0.009485094850948506,
+      "GSE60244": 0.0066154502774220525,
+      "GSE6269": 0.07990867579908667,
+      "GSE63990": -0.0004554865424432064
+    }
+  },
+  "verdicts": {
+    "R-platform": "does not",
+    "R-age": "not testable",
+    "R-both": "skipped (R-age not testable)",
+    "R-scale": "not evaluated",
+    "R-balance": "undecided"
+  },
+  "class_mix_spearman_bacterial_share_vs_gap_n5": -0.6,
+  "runtime_s": 217.0,
+  "note": "GSE40396 has exactly 30 arrays: its 20 size-matched draws are identical"
+}

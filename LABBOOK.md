@@ -11,7 +11,8 @@ before the session ends. Question drift gets written down the day it happens.
 > was dropped. Commit hashes and branch names below refer to that private
 > history and do not exist in this repository. Planning briefs under `docs/`
 > and the HTML pages under `reports/` that some entries mention were internal
-> working notes and are not included. Entries "written by Claude" were written
+> working notes and are not included; the one exception is
+> `reports/2026-11-08-writeup.html`, the write-up for a general reader. Entries "written by Claude" were written
 > by an AI coding assistant; "the author" decided what is noted as decided.
 
 ---
@@ -1529,3 +1530,422 @@ decision alone.
 ## 2026-10-31 — README bvnGPS row corrected
 
 README bvnGPS row corrected, mirrored to the public copy: the Prior-art row now states the held-out-cohort and random-split modes, the five shared GSE ids, and the two reasons it is still not the same measurement (two invocations plus a separate scoring script; not runnable as shipped). Source of truth: the 2026-10-30 scoop re-check entry above. No other README text touched; no code or results changed.
+
+## 2026-10-30 — PLAN (the LightGBM model-seed check): does the 6-point within-sample give-back for LightGBM survive LightGBM's own model seed?
+
+*(Written and committed BEFORE any code or run. Approved by the author 2026-10-30 15:18.)*
+
+**Question.** The condition-4 sentence says the per-patient (within-sample) transform "gives back about 6 points" for LightGBM (leave-one-cohort-out AUC, LOCO: raw 0.827 -> within-sample 0.888, both at model seed 0). The raw side has a model-seed side check (`results/seedsweep_lgbm_modelseed.csv`, 458 arrays, mean 0.8265, SD 0.0226). The within-sample side does not: 0.888 is one model-seed draw (the within-sample 10-seed sweep said so). Is a 6-point move bigger than LightGBM's own randomness?
+
+**Setup.** `rank_normalize_within_sample` once on 458 x 12,040; LightGBM LOCO only, fold seed 0, model seeds 200-209 (same as the raw side check). Repro gate: model seed 0 must reproduce `results/summary_withinsample.csv` LightGBM LOCO to 1e-9, else stop and write nothing. New option `--lgbm-modelseed` in `run_seed_sweep.py`, valid only with `--within-sample`; defaults still reproduce every existing file.
+
+**Pre-registered readings (copied from the plan, applied exactly as written).**
+- (a) If the 10-model-seed mean within-sample LightGBM LOCO differs from 0.888 by more than 0.01, the within-sample LightGBM number in the condition-4 sentence is replaced by mean +- SD.
+- (b) If the mean paired difference (within-sample minus raw LOCO, same model seed) is smaller than 2 x the SD of those 10 paired differences, the phrase "gives back about 6 points for LightGBM" is withdrawn and restated as "not distinguishable from LightGBM's own randomness".
+- Neither is a lab kill (CORE §3). Note: (a) is measured against the exact file value 0.8876018 (the plan's 0.888 is its rounding); (b) is a strict yardstick for n=10 (needs roughly t > 6.3), so the result may land near the line.
+
+**Claim-check.** Claim: the per-patient transform recovers about 6 AUC points of LightGBM's held-out-cohort loss. Measured: LightGBM LOCO AUC, 10 model seeds x 2 scales, paired by seed, 458 arrays. Rival: the 0.827 -> 0.888 move is LightGBM model-seed noise (raw SD about 0.02), not the transform. Control: the committed raw-scale model-seed run (same seeds, same folds; only the transform differs). Judge outside us: none; the pre-registered thresholds above are the judge, fixed before the run. Limit: `subsample=0.8` is inert without `subsample_freq` (review #16), so model-seed randomness is `colsample_bytree` only.
+
+**Cost.** CPU only, about 10-15 min wall, EUR 0, 0 GPU-hours. Both validation schemes: this run measures LOCO only; random-CV is unchanged from the within-sample 10-seed sweep.
+
+## 2026-10-30 — RESULT (the LightGBM model-seed check): the 6-point give-back survives LightGBM's own model seed; neither pre-registered reading fires
+
+**Question and why.** The condition-4 sentence says the per-patient (within-sample) transform gives back about 6 points of LightGBM's held-out-cohort loss (leave-one-cohort-out AUC, LOCO: raw 0.827 -> within-sample 0.888, both at model seed 0). The raw number had a model-seed side check (SD 0.023); the within-sample number was a single draw. If LightGBM's own randomness is about 0.02, a 6-point move could have been luck. This run gives the within-sample side its own 10 draws and pairs them with the raw ones.
+
+**Design.** `python run_seed_sweep.py --within-sample --lgbm-modelseed`: rank-normalise each patient's own genes (458 arrays x 12,040 genes), then LightGBM LOCO at fold seed 0 for model seeds 200-209, the same seeds as `results/seedsweep_lgbm_modelseed.csv`. Only the transform differs between the two columns. Repro gate (model seed 0 vs `summary_withinsample.csv`): |diff| = 0.0 (tolerance 1e-9), passed. CPU only, 638 s wall, EUR 0, 0 GPU. Existing result files untouched (`git status`: only the two new files). Run commit 60f46b2. Suite: 134 tests green (6 new); 5 hand mutations (skip rank-norm, ignore model seed, wrong gate reference, flipped (b) comparison, overwrite the raw file) each turned a test red.
+
+**Measured.** LOCO scheme only (random-CV unchanged from the within-sample 10-seed sweep; the gap table there stands).
+
+| | mean | SD | min - max |
+|---|---|---|---|
+| raw, 10 model seeds | 0.8265 | 0.0226 | 0.780 - 0.861 |
+| within-sample, 10 model seeds | 0.8909 | 0.0055 | 0.882 - 0.899 |
+| paired difference (within-sample minus raw) | +0.0644 | 0.0243 | +0.027 - +0.112 |
+
+Model-seed-0 values for comparison: raw 0.827, within-sample 0.8876.
+
+In plain words: across ten different LightGBM random draws the within-sample number sits at 0.891, almost exactly where the single draw (0.888) was, and it is much steadier (SD 0.006) than on the raw scale (0.023). In every one of the 10 seeds the within-sample run beat the raw run with the same seed; the smallest gain was +0.027, the largest +0.112.
+
+**Pre-registered readings, applied as written.**
+- (a) |mean 0.8909 - 0.8876| = 0.0033, not above 0.01: does NOT fire. The within-sample LightGBM number in the condition-4 sentence stays.
+- (b) mean paired difference 0.0644 vs 2 x SD of the pairs = 2 x 0.0243 = 0.0485: 0.0644 is not smaller, does NOT fire. "Gives back about 6 points for LightGBM" stays (the 10-seed mean is 6.4).
+- Neither fired, so no README edit and no change to the condition-4 sentence. It now has a model-seed control on both sides.
+
+**Descriptive extra (not a reading, not a rescue).** Standard error of the mean difference 0.0077, t about 8.4 on 9 df. (b) was a strict yardstick for n=10 and was cleared, with margin of about 1 SD of the pairs.
+
+**Claim-check.** Claim: the transform recovers about 6 AUC points for LightGBM. Measured: 10 paired model seeds, 458 arrays, LOCO. Rival (model-seed noise): not supported; raw SD 0.023 is smaller than the 0.064 shift and the shift has the same sign in 10/10 seeds. Control: committed raw model-seed run, same seeds and folds. Judge: thresholds fixed before the run in the PLAN entry; no outside human judge. Limits: model-seed randomness is `colsample_bytree` only (`subsample` inert without `subsample_freq`, review #16); fold seed fixed at 0 and the same five cohorts, so this says nothing about other cohorts; within-sample scaling assumes the whole patient profile is available (see Known soft spots); rank-normalised numbers are not quoted outside the repo. The paired SD is driven mostly by the raw side's randomness.
+
+**Implications / options.** (1) Leave everything as is: the claim holds. (2) Optional, only if the author wants it: quote "0.891 +- 0.006 (10 model seeds)" next to the single-seed 0.888 where it is cited. Public copy needs nothing since nothing changed.
+
+**Where.** A worker branch (local only, no remote, CORE §7; merge is the author's). Files: `run_seed_sweep.py` (`--lgbm-modelseed`, `lgbm_loco`, `compare_modelseed`), `tests/test_seed_sweep.py`, `results/seedsweep_lgbm_modelseed_withinsample.csv`, `results/run_seedsweep_lgbm_modelseed_withinsample.json`.
+## 2026-10-30 — pre-public scoop re-check (CORE §3 kill 2), the pre-public scoop re-check
+
+**Question asked.** Before the public copy goes out: is there now a public, runnable repository that (1) trains on some host-response cohorts, (2) tests on a held-out cohort, and (3) prints BOTH the random-CV AUC and the held-out-cohort AUC from the same public GEO data in one command? The 2026-10-10 sweep said no. It is 20 days old.
+
+**Rules fixed before searching.** "Same public data" = the code itself pulls public GEO bacterial-vs-viral cohorts (overlap with our five GSE ids is noted, not required). "Both numbers" = one script/command prints a within-dataset or random-split AUC AND a train-on-others/test-on-held-out-cohort AUC. FIRED only if all three are verified by READING code/README, not an abstract. Short of that = "unclear", never rounded to "not fired". Nothing was cloned, installed or run. the author approved the read-only web search 2026-10-30 (plan approval).
+
+**Search strings (one date, 2026-10-30; hit counts in brackets).**
+- GitHub code, per id: `GSE63990`, `GSE42026`, `GSE60244`, `GSE40396`, `GSE6269` (all returned hits, mostly refinebio/accession lists; relevant: `ambaran3/LRTI_CV`, `katrinakalantar/NMLHC`). Phrase strings in code search (`leave-one-dataset-out bacterial viral`, `leave-one-cohort-out bacterial viral`, `host response cross-cohort AUC`, `bacterial viral GEO classifier held-out cohort`): [0 each].
+- GitHub repos: `host-response bacterial viral` [2], `host-response cross-cohort` [3], `leave-one-dataset-out` [20, all unrelated], `leave-one-cohort-out transcriptomic` [1, long-COVID], `MetaIntegrator` [2], `bacterial-vs-viral transcriptomic classifier` [0], `bacterial viral infection gene expression classifier` [0], `infection signature GEO validation AUC` [0]. (Quoted multi-word repo searches return 0 on GitHub; the hyphenated forms work.)
+- Europe PMC 2025-01 to 2026-10: the five GSE ids AND bacterial AND viral [12]; abstract `"leave-one-dataset-out"` AND bacterial AND viral [0]; host response AND bacterial AND viral AND (held-out OR external validation OR leave-one) AND (github OR code availability), 2025-09 to 2026-10 [20]; cross-cohort / leave-one-study/cohort/dataset-out AND bacterial AND viral AND transcript* [187, nearly all off-topic]; preprints only (SRC:PPR) 2026-09-01 to 2026-10-30, host response AND bacterial AND viral [1: a review of RNA host-response tests], same window with the GSE ids [0]; forward citations of Bodkin 2022 (PMID 35184750) [38, 14 from 2025-26, titles read].
+- PubMed (MCP) 2025-2026: three natural-language/GSE queries [0 each; PubMed does not index GSE ids as text, so Europe PMC carried this]. The bioRxiv MCP has no keyword search (date/category only), so medRxiv/bioRxiv was covered through Europe PMC preprints instead (limit).
+- Web (standard search): two broad queries (GitHub / Zenodo / Hugging Face / Kaggle / GitLab plus the concepts). They returned papers only; no repo on those hosts.
+- Papers with Code: `paperswithcode.com` now redirects to `huggingface.co/papers/trending` (HTTP 302). Source gone; covered by GitHub + web. Listed as a coverage gap.
+
+**Candidate table.**
+
+| Candidate | URL | What it computes | Runnable | Both numbers, one command | Same public data | Verdict |
+|---|---|---|---|---|---|---|
+| bvnGPS (Ritchiegit), last commit 2023-02-01 | github.com/Ritchiegit/bvnGPS | 3-class (bacterial/viral/non-infected) gene-pair-score model on ~16 GEO cohorts incl. GSE40396, 42026, 60244, 63990, 6269. `main.py --test_mode cohort --test_cohort_index N` holds one cohort out; `--test_mode random` does a random split; AUC comes from a separate `predict_and_roc_0719.py` | unknown, probably not as shipped: no requirements file, no `data/` folder in the repo, hard-coded `data/coconut_...` paths, R download script with a fixed mirror | NO: two invocations plus a separate scoring script; "random" is one split, not CV | yes (GEO, same five series) | does NOT meet (fails "one command"). **Closest hit; understated on 10.10.** |
+| High-AUROC-sepsis-decision-failure (Zhenghongwei11); paper PLOS ONE 2026-09-03 | github.com/Zhenghongwei11/High-AUROC-sepsis-decision-failure | sepsis vs control, GSE65682 discovery with 5-fold CV inside it, then external cohorts GSE95233 / GSE154918 / GSE28750; compares scalers incl. sample-wise rank normalisation (our within-sample control). README: "one-command reproduction" from GEO download | yes by README (not run) | yes (internal CV AUROC + external-cohort AUROC) | GEO yes, but the task is sepsis, NOT bacterial-vs-viral, and other cohorts | does NOT meet (condition 3, different task). **Same design pattern; new since 10.10.** |
+| ambaran3/LRTI_CV (Falsey et al., Nat Commun 2025-11) | github.com/ambaran3/LRTI_CV | 4-gene LRTI signature; nested-CV scripts plus one validation script per cohort (GSE60244, GSE63990, ...) | partly (R scripts, data folders checked in) | no: separate scripts | partly (RNA-seq, own cohort) | does not |
+| rmaghembe1/host-response-module-transportability | github.com/rmaghembe1/host-response-module-transportability | fixed locked modules projected onto external cohorts; PLOS ONE 2026-09-10; README: "not a diagnostic classifier-discovery study" | unknown | no (no trained classifier, no random-CV) | yes (GEO) | does not. Changed since 10.10.: published, v1.1.0 2026-09-12, same design |
+| katrinakalantar/NMLHC | github.com/katrinakalantar/NMLHC | noisy-label logistic regression; trains GSE60244, tests GSE42026 | no (MATLAB via R, local paths); last push 2019 | no | yes | does not |
+| ashm97/Developing-an-infection-state-predictive-model (Myall 2020) | github.com/ashm97/Developing-an-infection-state-predictive-model | batch-corrected merged data, 60/20/20 split | partly | no held-out cohort | yes | does not |
+| MetaIntegrator | cran.r-project.org/package=MetaIntegrator | leave-one-dataset-out meta-analysis | CRAN still archived (2024-10-14); `cran/MetaIntegrator` mirror last push 2023-05-22; no khatrilab GitHub repo found by API | no one-command random-CV + held-out report | yes | does not. UNCHANGED since 10.10. |
+| Bodkin 2022 (Genome Med) | doi 10.1186/s13073-022-01025-x | within-dataset lasso / LOO, no held-out cohort | availability statement reads "data available from the authors on request"; no repo | no | yes | does not. UNCHANGED |
+| Chawla 2022 (Cell Syst) | not found by any code search | robustness / cross-reactivity | n/a | no | yes | does not. UNCHANGED (search gap, see below) |
+| 29-mRNA classifier (Mayhew 2020) / TriVerity / MeMed BV | papers / commercial | cross-study training, prospective validation | no public code found | no | n/a | does not. UNCHANGED |
+| UC two-transcript model (Front Immunol 2025); febrile-children ANN/RF (Front Pediatr 2025) | PMC12491250; PMC12364931 | single random split, no code link | no | no | partly | do not |
+| Other repos (keratitis, sepsis LODO, long-COVID LOSO) | see search strings | cross-cohort designs on other diseases | partly | partly | no (other diseases) | do not (condition 3) |
+
+**Recall check (the control).** Items from 10.10. found again by generic strings, without naming them: `rmaghembe1/...` (repo search `host-response bacterial viral`), bvnGPS (web search), Bodkin 2022 (web search), 29-mRNA / Mayhew 2020 (web search). Found only when searched by name: MetaIntegrator (the `leave-one-dataset-out` strings did not surface it). **SEARCH GAPS (not found again by any generic string):** Chawla 2022, TriVerity and MeMed BV (the last two are commercial, no code expected). Reading: generic strings recover public code reasonably (4 of 4 code-bearing items, MetaIntegrator only by name), but GitHub code-search phrase queries return 0, so repos whose README does not say `host-response` or `leave-one-...` could be missed.
+
+**What changed since 10.10.** (1) bvnGPS was described then as "gene-pair signatures, 2,680 samples, 16 cohorts". Read properly, it has a `cohort` held-out mode and a `random` mode and uses our five GSE ids. A near-miss, not a scoop, but not what the 10.10. line said. (2) A sepsis repo with the "internal CV vs external cohort in one command, plus sample-wise rank normalisation" design exists (Sept 2026). Different disease. (3) rmaghembe1 is now published. (4) Nothing relevant in the Sept-Oct 2026 preprints.
+
+**Verdict line.** **CORE §3 scooped: not fired** (no row meets all three conditions). Two near-misses go to the author instead of being decided here: bvnGPS fails only on "one command / runnable as shipped" (could change if someone wraps it); the sepsis repo fails only on disease. The README claim "no public runnable code computes both numbers from the same public data" still holds for bacterial-vs-viral, but a reader should be told that the same design exists for sepsis. No README change made (plan rule).
+
+**Limits.** One date; search engines and GitHub code search are incomplete ("not found" is not "does not exist"); private or unindexed code is invisible; nothing was run, so "runnable" is judged by reading; Papers with Code is gone; bioRxiv has no keyword API, so preprints rely on Europe PMC's index; PDF-only supplements were not read.
+
+**Claim-check.** Claim = README Prior-art line still holds on 2026-10-30. Measured = table above. Rival = the search missed it. Control = recall check: 4 of 4 code-bearing 10.10. items re-found (one only by name), 3 non-code items not found (listed as gaps). Judge = the repos' own READMEs and entry-point code read by us; no outside judge yet.
+
+**Where.** This entry only; a worker branch (local commit, no merge, no remote, CORE §7).
+
+## 2026-10-30 — Back-port of the public-copy corrections into the private working repo
+
+Process only. The 2026-10-23 corrections made in this public copy (blind re-read entry, README 10-seed-means sentence, "fold seed 0" column label) were carried back into the private working repo, and a second blind re-read checked every number of that sentence against the six CSVs (0 mismatches). No numbers changed.
+
+## 2026-11-01 — This repository switched to public
+
+**Question.** May this work leave the lab? The author looked at this copy and decided on 01.11.2026 to make it public.
+
+**Done.** Read-only pre-check of the whole history before the switch: one commit identity (the real-name noreply address); 0 hits for private e-mail addresses, phone numbers, local paths and secret shapes. Visibility switched; checked as a logged-out visitor (repo page, API `private=false`, raw README).
+
+**Measured.** Nothing scientific; no code, results or config touched.
+
+**Belief.** Unchanged. CORE §7 now allows naming the results outside the repo, always with both validation schemes side by side.
+
+## 2026-11-05 — Re-run of the headline table: numbers identical
+
+`python run_pipeline.py --train` on cached data, CPU only, 1 min 19 s: `results/summary_raw.csv` and all 20 fold rows byte-identical (logistic 0.9566 / 0.8807, gap 0.0759; LightGBM 0.9543 / 0.8272, gap 0.1271). Only the `date` field in `results/run_raw.json` moved. Third identical end-to-end run.
+
+## 2026-11-05 — PLAN (not run): CORE §7 item (4), does the per-cohort drop track platform, age or class mix?
+
+**Status of CORE first.** All four §2 conditions are met (1: 18.10./22.10.; 2: 21.10. + author checks 23.10.; 3: rewritten by the author 19.10.; 4: 20.10., restated 22.10.). The open CORE work is §7's proposal list; (1) and (3) are done, (2) is parked by the 19.10. decision, (4) per-cohort error analysis was never started. This plan is for (4). Interpretation flagged to the author, who may redirect.
+
+**Question.** Held-out AUC differs by cohort (logistic 0.83–0.94, LightGBM 0.70–0.90, `results/folds_raw.csv`). Does the drop line up with platform family (Affymetrix: GSE63990, GSE6269; Illumina: GSE42026, GSE60244, GSE40396), age group (children: GSE42026, GSE40396, GSE6269; adults: GSE63990, GSE60244 — to be pinned to the papers in `config/cohorts.json` before the run), or class mix (24–80 % bacterial)?
+
+**Design.** Gate 0: new runner reproduces the five on-file held-out AUCs to 0.005. Arm A: 20 ordered train-one/test-one cohort pairs, logistic L2 on raw and within-sample scale, LightGBM model seeds 0–2 secondary; pairs tagged same/cross family and same/cross age (2×2 cells: 2 / 6 / 6 / 6). Control: every training cohort cut to n = 30, 20 stratified draws, logistic. Arm B: leave-one-cohort-out with `class_weight=None` instead of `balanced`, raw, both models; plus the descriptive rank order of bacterial share vs per-cohort gap (n = 5, no verdict).
+
+**Pre-registered rules.** R-platform: same-family minus cross-family mean AUC (logistic, raw) ≥ 0.03 AND size-matched control same sign ≥ 0.02 → "tracks platform family"; ≤ 0.01 → "does not"; between → undecided. R-age: same thresholds. R-both: both fire → report 2×2 cell means, "confounded with five cohorts", no cause named. R-scale: platform fires on raw and the difference halves on within-sample → "mostly a scale offset". R-balance: mean held-out AUC moves ≥ 0.02 when weighting is off → "class weighting matters here"; < 0.01 → "not where the drop lives". README untouched in this round whatever fires.
+
+**Rivals + controls.** Training size → size-matched arm. Platform = age in disguise → 2×2 grid + R-both. Seed luck → logistic deterministic, LightGBM 3 seeds. Label quality per cohort → NOT controllable, stated limit. n = 5 → effect sizes only, "pattern" never "cause". One-cohort training ≠ four-cohort training → Gate 0 anchors; matrix read as "which training cohort carries over".
+
+**Judge.** These rules, committed before any run; blind re-read of the RESULT sentence vs the CSVs by a fresh agent (same model family); tests red on broken code (test cohort leaking into training, size cap not applied, wrong tag, class-weight switch ignored).
+
+**Runtime.** Calibrated on tonight's `--train` (1 min 19 s for 20 fits): ≈ 10–15 CPU-minutes in all. € 0, 0 GPU. Outputs: `results/transfer_matrix.csv`, `results/transfer_sizematched.csv`, `results/balance_control.csv`, `results/run_transfer.json`; code `src/transfer.py`, `run_transfer_matrix.py`, `tests/test_transfer.py`.
+
+**Where.** This entry (its HTML page was an internal working page and is not included). Branch `night/2026-11-05` in the private repo.
+
+
+## 2026-11-05 — PRE-RUN CLARIFICATIONS for the transfer-matrix plan (the transfer-matrix run; committed BEFORE any code or run)
+
+No threshold of the 2026-11-05 PLAN entry changes. This entry only fixes how they are read, and records the Step-0 age pin.
+
+**Step 0, age pin (`config/cohorts.json`, new keys `platform_family`, `age_group`, `age_source`).** Affymetrix: GSE63990 (GPL571), GSE6269 (GPL96). Illumina: GSE42026 (GPL6947), GSE60244, GSE40396 (GPL10558). Age groups: GSE42026 children (Herberg, PMID 23901082), GSE40396 children (Hu, PMID 23858444), GSE6269 children (Ramilo, PMID 17105821), GSE60244 adults (Suarez, PMID 25637350, median age 61). **GSE63990 is NOT pinned**: Tsalik (PMID 26791949) Table 1 gives ages 6-88 y (mean 45) for the derivation cohort, minors and adults mixed, no under-18 / 18+ split. The PLAN's guess of "adults" for it was wrong. Consequence, by the plan's own rule: **R-age = "not testable"; the 2x2 grid and R-both are skipped.** Only R-platform, R-scale and R-balance are read. Age is shown descriptively for the 4 pinned cohorts only (no verdict word).
+
+**Readings fixed now.**
+(a) "Mean pairwise AUC" = unweighted mean over the ordered pairs of a cell (same-family 8 pairs vs cross-family 12); in the size-matched arm each pair's AUC is first averaged over its 20 draws.
+(b) "tracks" = main difference >= 0.03 AND size-matched difference >= 0.02, same positive sign, edges inclusive. "does not" = main difference <= 0.01 (negative counts). Anything else = "undecided".
+(c) R-scale is evaluated only if R-platform says "tracks": within-sample difference <= half the raw difference (logistic, same 20 pairs).
+(d) R-balance per model: delta = mean leave-one-cohort-out AUC without weighting minus with weighting over the 5 held-out cohorts. |delta| >= 0.02 for either model = "class weighting matters" (direction + per-cohort deltas reported); |delta| < 0.01 for BOTH = "not where the drop lives"; otherwise "undecided".
+(e) Size-matched draw: n_bacterial = round(30 x training cohort's bacterial share), rest viral, rng seeds 0-19 fixed in code, test cohort whole. GSE40396 has exactly 30 arrays, so its 20 draws are identical (stated in the result).
+(f) LightGBM and within-sample runs are secondary: ranges over 3 model seeds, no verdict word.
+(g) Gate 0 covers all TEN on-file held-out AUCs of `results/folds_raw.csv` (logistic 5 + LightGBM seed 0, 5), tolerance 0.005 each. If one misses, nothing is written to `results/`.
+(h) Class mix: descriptive rank order of bacterial share vs per-cohort gap plus Spearman rho on n = 5, labelled descriptive.
+(i) All pairs use the one shared 12,040-gene set of the 458-array matrix, not a per-pair intersection.
+
+
+## 2026-11-05 — RESULT: per-cohort drop vs platform / age / class mix (CORE §7 item 4; the transfer-matrix run; a worker branch)
+
+**Question (recap).** Held-out AUC differs by cohort. Does the drop line up with platform family, age group or class mix? Rules were pre-registered in the 2026-11-05 PLAN entry (c7202b2) and the pre-run clarifications (fb2b99b), both committed before any run; no threshold was changed.
+
+**Design.** Gate 0 first: the new runner reproduced all ten on-file leave-one-cohort-out AUCs (`results/folds_raw.csv`), max abs difference 6.4e-04 (tolerance 0.005). Arm A: 20 ordered train-one/test-one pairs (8 same-family, 12 cross-family), logistic L2 raw and within-sample, LightGBM raw at model seeds 0-2. Size-matched control: every training cohort cut to 30 arrays, 20 stratified draws, logistic raw. Arm B: leave-one-cohort-out with `class_weight=None` vs `balanced`, both models. **Validation schemes named:** single-cohort transfer pairs (Arm A + control) and leave-one-cohort-out (Gate 0 + Arm B); no random-CV number is produced or quoted in this round.
+
+**RESULT.** On the 20 ordered pairs (logistic L2, raw, class-weighted) same-platform-family pairs scored LOWER than cross-family pairs: mean AUC 0.760 vs 0.821, difference -0.061 (size-matched control -0.062). **R-platform = "does not"** (rule: difference <= 0.01, negative counts) - the sign is opposite to "the drop tracks platform family". **R-age = "not testable"**: GSE63990 (Tsalik, Table 1: ages 6-88 y) cannot be pinned to children or adults, so the 2x2 grid and R-both were skipped. **R-scale** not evaluated (platform did not fire). **R-balance = "undecided"**: switching class weighting off moved the mean held-out AUC by +0.0005 (logistic) and +0.0195 (LightGBM, mean over 3 model seeds; per seed +0.031 / +0.026 / +0.002), so neither the >= 0.02 nor the < 0.01-for-both band is met. Class mix (descriptive, no verdict): Spearman rho = -0.6 between bacterial share and the per-cohort random-CV minus held-out gap, n = 5.
+
+**What the numbers mean in plain words.** If platform were the cause, training on a cohort from the same chip family should transfer better. It transfers worse, and it does so with equal training sizes, so training-set size is not the explanation. Secondary: within-sample ranking, difference -0.034; LightGBM seeds -0.114 / -0.111 / -0.108 (same sign, larger). The class-weight switch does not move the logistic model at all; for LightGBM it moves the result by about 0.02 on average, mostly through GSE6269 (+0.080, the 80 % bacterial cohort), and the size depends on the model seed - this is why the verdict stays "undecided" and not "matters".
+
+**Disclosures.** (1) Reading (d) "mean over the 5 cohorts" for R-balance was implemented as "per-cohort mean over the model seeds, then mean over cohorts"; this was in the code committed before the run but NOT written in the pre-run clarifications entry. Seed 0 alone (+0.031) would have crossed 0.02. (2) Three bugs were fixed between the first full run and this one, none by looking at a verdict: `matrix.transform` resolved to the pandas method (first run printed NaN, an empty arm, so its output was discarded and a NaN guard added), the same slip in the class-mix step (NaN Spearman, guard added), and a `cell_mean` indexing error. Each time results/ was deleted and the whole run repeated; the numbers above are from the last, clean run. (3) GSE40396 has exactly 30 arrays, so its 20 size-matched draws are identical and its size-matched rows equal its main rows. (4) `class_weight=None` is written as the string "None" in `balance_control.csv`; read it with `keep_default_na=False` or pandas turns it into NaN.
+
+**Rivals.** Training size: controlled (size-matched arm). Platform = age in disguise: not testable (see R-age). Seed luck: logistic deterministic; LightGBM 3 seeds, same sign. **Not controllable (stated limit): per-cohort label quality.** n = 5 cohorts means a *pattern*, never a *cause*. The finding is a negative for platform family in this design, not a statement about why the drop exists; the drop stays unattributed.
+
+**Guard tests.** `tests/test_transfer.py` (22 tests, suite 156 green). Mutations checked red on scratch copies: (1) leakage assert removed -> `test_leaking_test_cohort_into_training_raises` fails; (2) size cap 30 -> 31 -> `test_size_cap_applied_in_every_row_and_stratified` fails; (3) same/cross tag comparison inverted -> `test_real_config_tags_are_pinned` + `test_cell_mean_averages_draws_first_then_pairs` fail; (4) class_weight override dropped -> 3 class-weight tests fail.
+
+**Claim-check.** Claim: the per-cohort drop does not line up with platform family in this single-cohort-transfer design. Measured: 20 pairs + size-matched control (the claim matches what was measured, but only for logistic raw; LightGBM and within-sample are secondary). Rival with control: training size. Judge: pre-registered rules in a prior commit + blind re-read below, not us. Not claimed: any cause, anything about age, anything about class mix beyond a descriptive n = 5 correlation. README untouched.
+
+**Where.** `results/transfer_matrix.csv`, `transfer_sizematched.csv`, `balance_control.csv`, `run_transfer.json`; code `src/transfer.py`, `src/transfer_verdict.py`, `run_transfer_matrix.py`. A worker branch, local only (no remote); not merged to master. Age pin re-checked on 05.11. against Tsalik Table 1 (PMC4905578): derivation cohort mean 45 y, range 6-88 y, confirmed.
+
+**Blind re-read:** a fresh subagent (same model family) was given only the RESULT sentences, the rules and the CSV paths and recomputed everything: all numbers MATCH (same 0.7603 / cross 0.8212 / diff -0.0609; size-matched -0.0617; balance +0.00048 logistic, +0.01949 LightGBM, per seed +0.0310 / +0.0259 / +0.0016; Spearman -0.6, p = 0.28; within-sample -0.0344; LightGBM per-seed -0.1144 / -0.1106 / -0.1077) and both verdict words follow from the rules. BLIND VERDICT: all match. (Same model family, so not an independent judge of the design, only of sentence-vs-CSV.)
+
+**Belief.** In single-cohort transfer the per-cohort drop does not track platform family (same-family pairs transfer worse, also at equal training size); age cannot be tested with these five cohorts while GSE63990 has no per-sample ages; class weighting is at most a ~0.02 LightGBM effect that moves with the model seed, nothing for logistic. The drop stays unattributed (five cohorts = pattern, not cause). Merged to master 05.11.2026 after the author's OK. Next, as planned follow-ups: Arm B with 10 LightGBM seeds (settle R-balance, EUR 0, CPU) and a read-only check whether GEO carries per-sample ages for GSE63990 (would make R-age testable).
+
+
+## 2026-11-05 — PLAN (not run): Arm B with 10 LightGBM seeds, settle R-balance (the 10-seed Arm B run; committed BEFORE any code or run)
+
+**Question.** the transfer-matrix run left R-balance "undecided": switching class weighting off moved the mean leave-one-cohort-out (LOCO) AUC by +0.0005 (logistic) and +0.0195 (LightGBM, mean over model seeds 0-2; per seed +0.031 / +0.026 / +0.002). The LightGBM mean sits 0.0005 under the 0.02 line while the per-seed spread is 0.03, so the 3-seed verdict is seed luck either way. Do ten seeds settle it, or show it cannot be settled at this n? The 3-seed verdict in the 2026-11-05 RESULT entry stays on record; this is a NEW entry, not an edit.
+
+**Design (fixed now).** LightGBM model seeds 0-9 (the original 0-2 included). Delta per model = mean over the 5 held-out cohorts of [per-cohort mean over the seeds of AUC(class_weight=None) minus AUC(balanced)], exactly reading (d) of the pre-run clarifications. Logistic is deterministic: re-run once, as the Gate-0 anchor and for the logistic delta. Gate 0 (ten on-file LOCO AUCs, tolerance 0.005) runs first and refuses to write on a miss. Arm A is NOT re-run (R-platform did not depend on seeds, all three about -0.11, same sign).
+
+**Thresholds, unchanged.** |delta| >= 0.02 for either model = "class weighting matters here"; |delta| < 0.01 for BOTH models = "not where the drop lives"; anything else = "undecided". Edges inclusive for the 0.02 line. No threshold change after seeing data.
+
+**Also reported next to the verdict (descriptive, no verdict word):** the 10 per-seed deltas (LightGBM, mean over cohorts per seed), their min, max and sd (ddof=1), and the per-cohort deltas. If the 10-seed mean lands in the undecided band again, the answer is "cannot be settled at this n", stated as such.
+
+**Rivals + controls.** Seed luck: ten seeds instead of three, spread reported. Cohort luck (n = 5): not controllable, stated limit; effect sizes only, "pattern" never "cause". Judge: these rules committed before any code, a regression anchor (seeds 0-2 of the new run must reproduce the committed `results/balance_control.csv` to 1e-6), and a blind re-read by a fresh subagent.
+
+**Runtime / cost.** CPU only, about 5-10 minutes, EUR 0. New outputs only: `results/balance_control_10seeds.csv`, `results/run_balance_10seeds.json`; the transfer-matrix run result files stay byte-identical. Code: `--balance-seeds N` option in `run_transfer_matrix.py` (default 3 keeps today's behaviour), seed list in `src/transfer.py`. A worker branch, local only (no remote). No HTML report.
+
+
+## 2026-11-05 — RESULT: Arm B with 10 LightGBM seeds (the 10-seed Arm B run; a worker branch; PLAN c146725)
+
+**Question (recap).** the transfer-matrix run left R-balance "undecided": dropping class weighting moved the mean leave-one-cohort-out (LOCO) AUC by +0.0005 (logistic) and +0.0195 (LightGBM, 3 seeds), 0.0005 under the 0.02 line, with a per-seed spread of 0.03. Ten seeds were meant to settle it or show it cannot be settled.
+
+**Design.** Exactly as pre-registered in the PLAN entry (committed before any code): Gate 0 first (PASS, max abs diff 6.4e-04, tolerance 0.005); LightGBM model seeds 0-9; per cohort the mean over seeds, then the mean over the 5 held-out cohorts (reading d); thresholds unchanged (>= 0.02 either model = "matters"; < 0.01 both = "not where the drop lives"; else "undecided"). Logistic re-run once (deterministic). Arm A not re-run. Files: `results/balance_control_10seeds.csv`, `results/run_balance_10seeds.json`; the transfer-matrix run result files are byte-identical to master.
+
+**RESULT.** **R-balance = "not where the drop lives".** Logistic delta (no weighting minus weighting) +0.0005; LightGBM 10-seed delta +0.0033; both under 0.01. Per-seed LightGBM deltas, seeds 0-9: +0.0310, +0.0259, +0.0016, -0.0179, -0.0286, +0.0217, -0.0261, +0.0206, -0.0265, +0.0316. Min -0.0286, max +0.0316, sd 0.0257 (ddof 1). Seeds 0-2 alone reproduce the old +0.0195 (regression anchor, 1e-6).
+
+**What the numbers mean in plain words.** Whether class weighting is on or off changes the LightGBM score by about a third of a percentage point on average, and the sign flips from seed to seed (5 seeds positive, 5 negative-or-near-zero). The 3-seed "+0.0195" was a lucky draw of seeds 0-2, which happen to be mostly positive. Weighting does not systematically move the held-out AUC. Caveat: a single seed can still move by +-0.03, so any single LightGBM run is itself noisy at that size; that noise is the model's seed variance, not an effect of weighting.
+
+**Claim-check.** Claim: class weighting is not where the per-cohort drop lives. Measured: LOCO AUC with and without weighting, 5 cohorts, LightGBM 10 seeds + logistic. Rival + control: seed luck, controlled by 10 seeds and the spread reported; cohort luck (n = 5) not controllable, stated limit, a pattern not a cause. Judge: the pre-registered rule plus a blind re-read by a fresh subagent given only the sentences, the rule and the CSV path: all 5 sentences MATCH (it noted that the verdict depends on using all 10 seeds: the 3-seed subset alone is "undecided").
+
+**Belief.** R-balance is closed at "not where the drop lives"; the drop stays unattributed. No HTML report (skipped, per plan). README and CORE.md untouched. Local only (no remote); not merged.
+
+
+## 2026-11-06 — RESULT: does GEO carry per-sample ages for GSE63990? (the GEO age check; a worker branch)
+
+**Question.** the transfer-matrix run could not test R-age ("does the per-cohort drop track age group?") because GSE63990 (Tsalik 2016) is a mixed cohort with no children/adult split in the paper's Table 1. Does GEO's series matrix carry a per-sample age that would let us split it? This is a count of metadata fields, not a test, so no pre-registration; nothing from the pipeline was run and no result changed.
+
+**Measured** (`tools/geo_age_check.py` -> `results/geo_age_check.csv`, cached matrices only, nothing downloaded). **GSE63990: 280 samples in the matrix, 0 carry an age.** Its only characteristics are `batch`, `infection_status`, and tissue/sample-id text; no key contains "age". Under-18 count: not available. Cross-check cohorts: GSE42026 (92 samples) also has no age field. GSE40396 (65): age in months (key `age (month)`), 0.2-2.75 y, all under 18. GSE6269 (97): key `Age`, mixed units ("10 y", "4m"; converted), 0.04-36 y, median 0.9 y, 94 under 18 and 3 aged 18 or over. GSE60244 (158): key `age`, 23-92 y, all adults. So the `age_group` pins in `config/cohorts.json` hold for three cohorts; GSE6269 "children" contains 3 samples of 18+ (a small impurity, not changed here; the config is untouched). Per the plan, no GSM pages or SRA were scraped.
+
+**Belief.** **R-age testable by splitting GSE63990: no, GEO carries no per-sample age for GSE63990.** Next option (not filed): fetch the per-patient table in the Tsalik 2016 paper's supplement (or the authors' data), if one exists; that would be a different source than GEO's matrix.
+
+**Where.** `tools/geo_age_check.py`, `results/geo_age_check.csv`, `tests/test_geo_age_check.py` (4 tests; suite 168 passed). `config/cohorts.json`, README, CORE.md, `src/` and all pipeline results untouched. Local only (no remote).
+
+## 2026-11-07 — Re-run of the headline table: numbers identical again
+
+Same command as on 05.11., 1 min 33 s, md5-checked before and after: `results/summary_raw.csv` and `results/folds_raw.csv` byte-identical. Only the `date` field in `results/run_raw.json` moved (to 2026-11-07). Fourth identical end-to-end run.
+
+## 2026-11-07 — R-age closed from public sources (adds the paper check to the GEO age check; nothing run)
+
+**Question.** the GEO age check found no per-sample age in GEO for GSE63990 and named the paper's supplement as the next place to look. Does Tsalik 2016 (PMID 26791949, PMC4905578, doi 10.1126/scitranslmed.aad6873) give per-subject ages that could be mapped to the 280 arrays?
+
+**Checked (read-only, PubMed Central full text + the PMC page's table captions).** Table 1: cohort-level age only ("45 (6-88)" for the derivation cohort). Table S2 is "Summary of clinical features for the derivation cohort" (aggregate). Table S4, "Subjects with discordant predictions compared to clinical assignments", is the only per-subject table and covers the 35 discordant subjects, not 273. No GSM ids appear anywhere in the text. The supplement PDF (`NIHMS791803-supplement-01.pdf`, 313 KB) could not be fetched by script tonight (PMC and Europe PMC both answered non-browser requests with HTML/XML, not the file); its table captions were read from the article page. Related fact from the Methods, relevant to the plan below: the 317 arrays "were measured in two microarray batches with seven overlapping samples", with "substantial batch differences" corrected in the authors' analysis.
+
+**Belief.** **R-age is not testable from public sources** for GSE63990: GEO has no age field, the paper has no per-subject age table for the full cohort. Closed unless the author opens the supplement PDF in a browser and finds otherwise (an impossibility for 280 arrays even then, since S4 holds 35 subjects). `config/cohorts.json` stays "mixed / NOT PINNED".
+
+**Where.** This entry only. The GEO age check branch (a worker branch, commit 674d018, its own LABBOOK entry 06.11.) is still unmerged into master; the author's merge.
+
+
+## 2026-11-07 — PLAN (not run): does GSE63990's own array batch already cost AUC? (CORE §7 item (4), continued; committed BEFORE any code or run)
+
+**Status of CORE first.** All four §2 conditions met (05.11. check, unchanged). §7 list: (1) done, (2) parked 19.10., (3) done, (4) transfer matrix done 05.11. (R-platform "does not track", R-balance "not where the drop lives", R-age closed above). The drop stays unattributed. This plan continues (4) on the one cohort with a documented internal structure that is not patient biology: GSE63990's two microarray batches.
+
+**Question.** Trained on batch 0, tested on batch 1 of the same hospital cohort (and the reverse): how much AUC is lost compared with a random split of the same shape, and does the loss shrink under within-sample normalisation?
+
+**Data.** The 185 labelled GSE63990 arrays already in the pipeline; `batch` from the cached series matrix. Counted tonight with the pipeline's own rules and exclusion list (counts only, no AUC looked at): batch 0 = 58 bacterial / 88 viral (146), batch 1 = 12 / 27 (39); total 70 / 115 = Table 1.
+
+**Design.** Gate 0: the runner rebuilds exactly these 185 arrays and reproduces the on-file held-out-GSE63990 AUCs (logistic 0.9257, LightGBM seed 0 0.8927) to 0.005; on a miss nothing is written. Gate B: logistic 5-fold CV predicting *batch* from expression (labels unused); batch-AUC ≥ 0.80 → proceed, else stop with verdict "batch not visible in GEO's values; test uninformative". Arm A: direction 1 train batch 0 / test batch 1; direction 2 the reverse; logistic L2 raw + within-sample primary, LightGBM seeds 0-2 raw secondary (ranges, no verdict). Control: per direction 20 random draws (rng seeds 0-19) with the same training n and class counts as the training batch and the same test n and class counts as the held-out batch, both sides mixing batches; Δ = control mean − batch-out AUC.
+
+**Pre-registered rules.** R-batch (logistic raw): "a within-hospital batch costs AUC" = Δ ≥ 0.03 in BOTH directions AND batch-out AUC below all 20 control draws in both; "no batch cost" = Δ ≤ 0.01 in both; else "undecided"; edges inclusive. R-scale, only if R-batch fires: within-sample Δ ≤ half the raw Δ in both directions → "mostly a scale offset". Descriptive, no verdict word: Δ next to the overall logistic gap 0.076 and GSE63990's own held-out loss (~0.03); 1000-resample bootstrap interval per batch-out AUC; the Gate-B batch-AUC; LightGBM ranges. Power limit stated now: batch 1 has 12 bacterial arrays, one AUC on 39 arrays has SE ≈ 0.07, so direction 1 sees only a large loss and "no batch cost" is weak evidence there. No threshold change after data.
+
+**Rivals + controls.** Training size → control n. Class mix (40 % vs 31 %) → control class counts. GEO already batch-corrected → Gate B. Batch = sub-population (four sites, 48 Duke students in the viral group) → NOT controllable, stated: "batch or sub-population", pattern not cause. Seed luck → logistic deterministic, LightGBM secondary. Test noise → control spread + bootstrap + "below all 20 draws". n = 1 cohort → says nothing about the other four.
+
+**Judge.** These rules before code; tests red on broken code (batch leaks into training, control not class-matched, Gate B skipped, rule edges inverted); blind re-read of the RESULT sentences vs the CSVs by a fresh subagent.
+
+**Runtime / cost.** ≈ 120 fits on ≤ 185 arrays (tonight's calibration: 20 fits on 458 arrays = 1 min 33 s) → ≈ 5-10 CPU-min, € 0, 0 GPU. New files only: `results/batch_split.csv`, `results/batch_control.csv`, `results/run_batch_split.json`; code `src/batch_split.py`, `src/batch_split_verdict.py`, `run_batch_split.py`, `tests/test_batch_split.py`. Existing results byte-identical.
+
+**Morning options (in the report).** A GO as written (recommended) · B logistic only · C Bodkin Table 2 pull instead (last listed §7 item, literature only) · D stop the lab at the current belief. Plus metaphor A/B. Also: merge the GEO age check.
+
+**Where.** This entry (its HTML page was an internal working page and is not included). Branch `night/2026-11-07` in the private repo.
+
+## 2026-11-08 — PRE-RUN CLARIFICATIONS for the batch-split run (the batch-split run; committed BEFORE any code or run)
+
+Reads of the 07.11. PLAN above; **no threshold, rule or reading from it changes.** This entry only fixes what the PLAN leaves open. A worker branch, cut from `night/2026-11-07` (so the PLAN is an ancestor of the code). Approval = the author's option A (logistic + LightGBM secondary).
+
+(a) **Gate 0** = two held-out-GSE63990 fits (train on the other four cohorts, test on GSE63990; logistic and LightGBM seed 0, raw) must match `results/folds_raw.csv` (0.9257 / 0.8927) within 0.005, AND the 185 arrays must count exactly 58 bacterial / 88 viral (batch 0) and 12 / 27 (batch 1) with exactly one `batch:` string per array. Any miss = nothing is written to `results/`.
+(b) **Gate B** number = mean of the 5 per-fold AUCs (the repo convention in `train.summarize`), `StratifiedKFold(5, shuffle=True, random_state=0)` stratified on batch, same logistic settings as `src/train.py` (`transfer.make_model`); the pooled out-of-fold AUC is shown beside it (descriptive). ≥ 0.80 inclusive proceeds. Below it only `run_batch_split.json` and the Gate-B rows of `batch_split.csv` are written (no Arm A, no control file), verdict text "batch not visible in GEO's values; test uninformative" plus the number.
+(c) **Control draw d (0-19)** = one random partition of the 185 arrays: the 39-array side is drawn with `default_rng(d)` at 12 bacterial / 27 viral, the other side is the remaining 146 (58 / 88). Direction 1 trains on the 146 side, direction 2 on the 39 side, so train/test n and class counts equal the batch split's by construction, the sides are disjoint and cover all 185. Each draw is asserted to contain both batches on both sides. Both directions and both transforms use the same 20 partitions. Within-sample Δ is defined like raw Δ (control mean − batch-out AUC); always computed, only READ if R-batch fires.
+(d) **Edges.** "Below all 20 draws" = strictly below the minimum of the 20 control AUCs (a tie is not below). Δ edges inclusive with EPS 1e-12 as in `transfer_verdict.py`. "No batch cost" = Δ ≤ 0.01 in both directions (negative Δ counts). Every other combination = "undecided".
+(e) **Bootstrap.** 1000 resamples of the test arrays (rng seed 0), model NOT refitted, 95 % percentile interval, resamples with one class skipped and counted. Descriptive only.
+(f) **LightGBM** = Arm A only, model seeds 0-2, raw; no LightGBM control draws (the PLAN has none); min/max ranges only, no verdict word.
+(g) **Comparators** are read from files, not typed in: overall logistic gap from `results/summary_raw.csv`, GSE63990's own held-out loss from `results/gapdiag_cohorts.csv` (`rcv_auc_in_cohort − loco_auc`, raw, logistic).
+
+**Disclosures fixed now (for the RESULT entry).** (1) The pipeline's highest-mean probe choice and per-cohort NaN imputation read BOTH batches of GSE63990 (label-free; identical to the on-file pipeline Gate 0 reproduces; affects batch split and control equally). (2) The 7 re-run arrays were excluded by an INFERRED identity (2026-10-21); a subject still in both batches would inflate cross-batch AUC, biasing toward "no batch cost". (3) Batch can be a sub-population (four sites, 48 students): wording stays "batch or sub-population", pattern not cause. (4) Power: 12 bacterial arrays in batch 1, one AUC on 39 arrays has SE ≈ 0.07, so "no batch cost" in direction 1 is weak evidence. (5) One cohort says nothing about the other four. README.md and CORE.md stay untouched.
+
+## 2026-11-08 — RESULT: GSE63990's own array batch, split both ways (the batch-split run; PLAN 2026-11-07 + clarifications 2026-11-08)
+
+**Question, and why.** The model loses AUC when the test cohort is a whole different hospital (overall logistic gap 0.0759). Four explanations were already tried and none attributed the drop (platform family, class balance, age; see the 05.11. and 07.11. entries). GSE63990 is the one cohort with a documented internal split that is *not* patient biology: two microarray batches (Tsalik 2016, Methods). If a model taught on batch 0 already does worse on batch 1 of the same hospital (and the reverse), then part of the drop can live in how samples were handled, not in the hospital.
+
+**Design, before the numbers.** The 185 labelled arrays of GSE63990: batch 0 = 58 bacterial / 88 viral, batch 1 = 12 / 27. Gate 0 rebuilt them and had to reproduce the on-file held-out AUCs. Gate B asked: can a model tell the batches apart from expression alone? Arm A trained on one batch and tested on the other, both directions (logistic L2, raw and within-sample; LightGBM seeds 0-2 raw). The control repeated exactly the same train/test sizes and class counts, but with 20 random splits that mix both batches; Δ = control mean − batch-out AUC. Rules were fixed before any code (commits 4531829, 341fe29); nothing was changed after seeing data.
+
+**Numbers in plain words.**
+- Gate 0 passed: the refit differs from the file by 0.0005 (logistic) and 0.0000 (LightGBM), limit 0.005. Counts 58/88/12/27 exact.
+- Gate B: batch is perfectly recognisable (batch-AUC 1.000 in all 5 folds, bar 0.80). So the two batches differ systematically in the GEO values. That alone does not say the difference hurts infection prediction.
+- Direction 1 (train batch 0, test batch 1), logistic raw: AUC 0.849 (bootstrap 95 % interval 0.70-0.96). The 20 mixed control splits average 0.957 (min 0.892, max 1.000, sd 0.037). Δ = 0.108; the batch-out AUC is below all 20 draws.
+- Direction 2 (train batch 1, test batch 0), logistic raw: AUC 0.885 (0.81-0.94). Control mean 0.924 (min 0.858, max 0.948, sd 0.021). Δ = 0.039, but the batch-out AUC is NOT below all 20 draws (it sits inside the control spread).
+- **R-batch verdict: "undecided"** (direction 1 clears both parts of the rule, direction 2 clears Δ ≥ 0.03 but fails "below all 20 draws"). R-scale: not evaluated, because R-batch did not fire.
+- Descriptive, no verdict word: within-sample normalisation gives direction 1 0.858 vs control 0.958 (Δ 0.100) and direction 2 0.770 vs control 0.930 (Δ 0.160), so it did not close the gap. LightGBM raw (seeds 0-2): direction 1 0.719-0.725, direction 2 0.899-0.904. Next to these: overall logistic gap 0.0759, GSE63990's own held-out loss 0.0329 (both read from files).
+
+**Claim-check.** Claim tested: a within-hospital array batch already costs held-out AUC. Measured: logistic AUC across the two documented batches, both directions, against 20 size- and class-matched mixed splits of the same arrays. Rival explanations and their controls: training size and class mix (control matches n and class counts by construction); GEO already batch-corrected (Gate B says no, batch is fully visible); test noise on 39 arrays (control spread, bootstrap, "below all 20" rule); LightGBM seed luck (three seeds, ranges only). Not controllable: batch vs sub-population (four sites, 48 students in the viral group). Judge who is not us: the blind re-read below, same model family, so it checks sentence-versus-CSV, not the design. Kill outcomes: neither fired (Gate B passed; not "no batch cost").
+
+**Disclosures.** (1) The probe choice (highest mean) and per-cohort NaN imputation read both batches (label-free, identical to the on-file pipeline Gate 0 reproduces; affects batch split and control equally). (2) The 7 re-run arrays were excluded by an inferred identity; a subject left in both batches would inflate cross-batch AUC, biasing toward "no batch cost". (3) Batch can be a sub-population: the wording is "batch or sub-population", a pattern, not a cause. (4) Power: one AUC on 39 arrays has SE ≈ 0.07 and batch 1 has only 12 bacterial arrays; direction 1 rests on that small side. (5) One cohort says nothing about the other four. (6) Runner bug, fixed and the WHOLE run repeated: a `c.transform` pandas-method clash in the comparator read crashed the first run before anything was written; the fix is a column lookup by name and cannot touch a number or a verdict. (7) `tests/` hold red-then-green proofs for the four named guards (batch leak, control not class-matched, Gate B bypass, rule edges); the control's small-side class check is redundant with its big-side check (the sides are complements), shown by removing both.
+
+**What we now believe.** Batch is visible in the values and, in one direction, the model taught on one batch scores clearly worse on the other than a mixed split would (Δ 0.108, larger than the whole-cohort loss of 0.033 and than the overall gap 0.076); in the other direction the loss (Δ 0.039) is within what random splits can produce. The pre-registered word is "undecided", and that is what we claim: the batch-or-sub-population candidate is not excluded and not established; the cross-hospital drop stays unattributed. Within-sample normalisation did not help here. This does not close CORE §7 item (4) either way; a larger-test-side design (not available in GSE63990) would be needed to decide.
+
+**Where.** `results/batch_split.csv`, `results/batch_control.csv`, `results/run_batch_split.json`; code `src/batch_split.py`, `src/batch_split_verdict.py`, `run_batch_split.py`, `tests/test_batch_split.py`. A worker branch (local only, no remote). Existing `results/` files byte-identical (md5 before/after, 49 files). README.md and CORE.md untouched.
+
+**Blind re-read (fresh subagent, read-only, given only the RESULT sentences, the rules and the three file paths).** All 9 sentences MATCH the CSV/JSON; it recomputed the verdict independently and also got "undecided" (direction 2 fails "below all 20 draws"; "no batch cost" fails because Δ > 0.01). No anomalies except that `n_train`/`n_test` are stored as floats ("146.0"). Same model family: it checks sentence-versus-file, not the design.
+
+
+## 2026-11-08 — WRITE-UP for a general reader (the author's GO, 20:05; docs only)
+
+**Question.** Can the lab's state as of 07.11. (all four CORE §2 conditions met; R-platform, R-balance and R-age closed; drop unattributed) be told as one reading story for a non-specialist reader without claiming more than CLAUDE.md allows?
+
+**Done (docs only, no experiment, no code change, `results/` untouched).**
+(1) `README.md` rewritten as the reading story: question → why it matters → design in plain words → four results with their key numbers explained → what the drop is NOT (closed candidates, one table) → honest limits → who did what (author vs AI) → reproduce → prior art. The old README's Labels table, prior-art table and author-vs-AI split are kept in condensed form; every number keeps its `results/` source line.
+(2) `reports/2026-11-08-writeup.html`, the same story as an HTML page with one dumbbell chart (random-CV vs leave-one-cohort-out, 4 rows).
+(3) A privacy check of the tracked files (no private e-mail address, no credential-like file).
+(4) This entry.
+
+**The four results as told (numbers re-read from the CSVs tonight, all MATCH the files):** R1 raw gap logistic 0.957→0.881 (0.076; 10 seeds 0.073 ± 0.004), LightGBM 0.954→0.827 (0.127; 0.123 ± 0.006), LightGBM model-seed LOCO 0.780–0.861. R2 per-patient ranks logistic 0.963→0.895 (0.065 ± 0.003), LightGBM 0.958→0.888 (0.067 ± 0.004), paired model-seed gain +0.064 in 10/10 seeds, LOCO 0.891 ± 0.006. R3 frozen Herberg 0.876/0.882 (−0.004 ± 0.005), Sweeney 0.837/0.912 (−0.075 ± 0.002), independent-cohort LOCO 0.901. R4 same- vs cross-family 0.760 vs 0.821 (−0.061; size-matched −0.062), balance delta +0.0005 / +0.0033 (10 seeds, sd 0.026), age not testable (0/280 GEO ages).
+
+## Claim-check (2026-11-08, write-up)
+Claim:      the write-up states only what CORE/CLAUDE.md allow — the gap between two validation schemes on public data, four pre-registered results, closed candidates, limits — and every number is traceable to a committed `results/` file.
+Measured:   every quoted number re-read from `summary_*.csv`, `seedsweep_*_summary.csv`, `seedsweep_lgbm_modelseed*.csv`, `frozen_signatures_summary.csv`, `folds_raw.csv`, `run_transfer.json`, `run_balance_10seeds.json` tonight; `pytest --co` = 168. No new measurement; the write-up adds no claim the LABBOOK does not already carry.
+Rival:      "story inflation" — the story reads as a better classifier or a clinical finding. Control: section 1 and 8 of both documents say in so many words what is NOT claimed; the blind cold-read below checks each sentence against CLAUDE.md's allowed-claim rule.
+Judge:      a blind fresh subagent (same model family) given only README.md, CLAUDE.md lines 1-30 and the `results/` files, told to recompute every number and flag any overstep. Fails if any number mismatches or any sentence oversteps. Result (2026-11-08, same night): every printed number with a data file reproduces to the printed precision (about 60 numbers checked, 0 mismatches), 168 tests collected, no sentence claims a signature/classifier/clinical use; 4 low-severity wording notes (Sweeney 2-cohort row has no random-CV cell → footnoted; 'about as well' → 'as well as or slightly better'; two source files added to the Sources lines) all applied before the commit. Same model family, so a sentence-vs-CSV judge, not a design judge. No human reader yet.
+
+**Belief.** Unchanged (docs only).
+
+
+## 2026-11-08 — PLAN (not run): whole-blood check — does the one PBMC cohort change the held-out number? (the author; committed BEFORE any run)
+
+**Why.** A read-only pass over the cached `data/series/*.gz` metadata (this session, re-verified field by field) shows GSE6269 is the only PBMC cohort (`Sample_source_name` = `PBMC_…`, overall design "PBMC"); GSE40396, GSE42026, GSE60244 and GSE63990 say whole blood (series text; PAXgene tubes for GSE42026 + GSE63990, Tempus for GSE40396 + GSE60244). Sample type is therefore a candidate for part of the drop that was never tested. GSE6269 is also the 80 %-bacterial, pediatric, GPL96 (Affymetrix) cohort and LightGBM's worst held-out (0.703), so whatever moves here is **confounded with "that one cohort"** — stated now, not after.
+
+**Question.** Trained and tested on the 4 whole-blood cohorts only, how do the leave-one-cohort-out (LOCO) AUCs compare with the 5-cohort run, and does the random-CV minus LOCO gap change?
+
+**Design.** `run_whole_blood_check.py`. Gate 0: re-fit the 5-cohort LOCO rows with the same code path and reproduce all 10 on-file AUCs (`results/folds_raw.csv`) to 0.005, else nothing is written. Primary: the SAME 12,040-gene matrix with GSE6269 removed from train and test (so only the training data changes, not the gene set); logistic L2 raw, 5-fold random-CV (fold seed 0) + 4-way LOCO; LightGBM model seeds 0–2 secondary. Secondary, descriptive only: the natural 4-cohort gene intersection (will be larger than 12,040 once GPL96 is gone), logistic LOCO only, to show the gene-set effect separately.
+
+**Pre-registered readings (logistic, raw, fixed genes).** Δ_train = mean LOCO over the 4 whole-blood cohorts when trained on 3 whole-blood cohorts, minus the mean of the SAME 4 held-out rows in the 5-cohort run (where GSE6269 was in the training set). Δ_train ≥ +0.02 → "the PBMC cohort hurts whole-blood transfer"; ≤ −0.02 → "the PBMC cohort helps"; between → "no detectable effect at n = 4". Gap: 4-cohort random-CV minus 4-cohort LOCO next to the 5-cohort 0.076; a shrink ≥ 0.02 is reported as "part of the 5-cohort gap sat with GSE6269" — descriptive, no causal word, because the 5-cohort LOCO mean also contained GSE6269's own held-out row (0.938 logistic, 0.703 LightGBM), which is dropped here by construction. LightGBM: ranges over 3 seeds, no verdict word. No threshold change after data.
+
+**Rivals + controls.** PBMC vs. "the smallest-chip / most-bacterial / pediatric / Affymetrix cohort": NOT separable with one PBMC cohort — the result is about *removing GSE6269*, PBMC is one of its properties. Gene-set change: controlled by fixing the 12,040 genes (primary) and showing the natural intersection separately. Training-set size (458 → 367 arrays): not controlled; stated. Seed luck: logistic deterministic; LightGBM 3 seeds. n = 4 held-out cohorts: effect sizes only.
+
+**Judge.** These readings, committed before the run; Gate 0; tests red on broken code (`tests/test_whole_blood_check.py`: PBMC cohort leaking into the whole-blood matrix, gene set not fixed, Gate 0 tolerance); blind re-read of the RESULT sentences vs the CSV by a fresh subagent.
+
+**Runtime / cost.** ≈ 30 fits on ≤ 458 arrays, ≈ 3–4 CPU-min, € 0, 0 GPU. New files only: `results/whole_blood_check.csv`, `results/run_whole_blood_check.json`. Existing results byte-identical. Branch `docs/2026-11-08-writeup` (the author's instruction: same branch).
+
+_**Filing disclosure (08.11., 21:50).** This PLAN text was written before the run, but the append landed in the wrong folder (a private notes file, committed there at 21:41, i.e. AFTER the run at ~21:20); it was moved here afterwards. What WAS committed before the run is the runner `run_whole_blood_check.py` (431c30b, 21:17), which fixes the design (Gate 0, fixed gene set, GSE6269 removed from train and test, logistic primary, LightGBM seeds 0–2) but not the ±0.02 reading. Treat the Δ_train reading as pre-written, not pre-committed._
+
+## 2026-11-08 — RESULT: whole-blood check (PLAN above; runner 431c30b, see filing disclosure; run on branch `docs/2026-11-08-writeup`)
+
+**Question (recap).** GSE6269 is the only PBMC cohort. With it removed from training AND testing, how do the leave-one-cohort-out (LOCO) AUCs of the 4 whole-blood cohorts compare with the same 4 held-out rows of the 5-cohort run, and does the gap change?
+
+**Run.** `python run_whole_blood_check.py`, CPU, 2 min 18 s. Gate 0 PASS: all 10 on-file LOCO AUCs reproduced, max |diff| 1.1e-16. Existing `results/folds_raw.csv` and `summary_raw.csv` md5-identical before and after. New files only: `results/whole_blood_check.csv`, `results/run_whole_blood_check.json`.
+
+**Measured (logistic L2, raw, the fixed 12,040 genes, 367 arrays).** LOCO per whole-blood cohort, 4-cohort run vs 5-cohort run: GSE40396 0.858 vs 0.864; GSE42026 0.835 vs 0.832; GSE60244 0.819 vs 0.844; GSE63990 0.914 vs 0.926. Mean 0.857 vs 0.866, **Δ_train = −0.010**. 4-cohort random-CV 0.938, LOCO 0.857, **gap 0.081** (5-cohort gap 0.076). Side fact: the natural 4-cohort gene intersection is ALSO 12,040 genes — GPL96 (GSE6269) was never the chip that limited the shared set — so the secondary natural-intersection rows equal the primary rows exactly.
+
+**Measured (LightGBM, raw, secondary, seeds 0–2).** Mean LOCO 0.711 / 0.765 / 0.740 vs 0.858 in the 5-cohort run (Δ ≈ −0.15 … −0.09). Almost all of that is ONE cohort: held-out GSE40396 (30 arrays, 8 bacterial) falls from 0.835 to 0.216 / 0.477 / 0.324 once GSE6269 leaves the training set; the other three move little (GSE42026 0.896 → 0.908 / 0.904 / 0.916; GSE60244 0.809 → 0.853 / 0.809 / 0.868; GSE63990 0.893 → 0.866 / 0.868 / 0.850). 4-cohort random-CV 0.922, LOCO 0.711 (seed 0), gap 0.212.
+
+**Pre-registered reading, applied as written.** Logistic Δ_train = −0.010 lies inside (−0.02, +0.02) → **"no detectable effect at n = 4"**. The gap did not shrink (0.076 → 0.081), so the descriptive line "part of the 5-cohort gap sat with GSE6269" is NOT written. LightGBM carries no verdict word; its numbers are reported as ranges.
+
+**What the numbers mean in plain words.** For the logistic model it makes almost no difference whether the PBMC cohort is in the training set: the four whole-blood hospitals are predicted about as well either way, and the gap between mixed and held-out stays about 8 points. So "the PBMC cohort is where the drop lives" is not supported for the model the headline rests on. For LightGBM the picture is different and stranger: without the pediatric, bacterial-heavy GSE6269 in training, the tree model becomes anti-predictive on the smallest cohort (Hu 2013, 30 children, 8 bacterial; AUC 0.22–0.48 means it ranks bacterial cases as *less* bacterial). A plausible reading (inferred, not tested): GSE6269 supplies most of the training signal for young children with bacterial infections, and the tree model leans on it for GSE40396, the other young-children cohort. That is a statement about training-set composition, not about PBMC.
+
+**Claim-check.** Claim: removing the PBMC cohort does not detectably change the logistic held-out AUC on the whole-blood cohorts (Δ −0.010, n = 4), and the random-CV minus LOCO gap does not shrink. Measured: exactly that (LOCO on 4 cohorts, fixed genes, Gate 0). Rival: PBMC is confounded with "that one cohort" (pediatric, 80 % bacterial, Affymetrix GPL96, smallest held-out LightGBM AUC) — NOT separable with one PBMC cohort, so this is a result about *removing GSE6269*; training-set size (458 → 367) not controlled, stated. Judge: readings committed before the run (431c30b); 4 new guard tests (PBMC leaking into the whole-blood matrix, gene set not fixed, Gate 0 misses a moved number / missing rows, committed CSV ≠ JSON); blind re-read by a fresh subagent given only the two new result files + `folds_raw.csv`: all 5 numbered sentences MATCH, no GSE6269 row in the CSV, verdict word follows from the rule — BLIND VERDICT: all match (same model family; sentence-vs-CSV judge only). It added one reading note, adopted here: the "5-cohort gap 0.076" is the all-five-cohort gap; computed on the same 4 whole-blood held-out rows only it would be 0.090 (random-CV 0.957 − 0.866), so the gap did not shrink under either reading. Suite: 172 tests.
+
+**Belief.** Sample type (PBMC vs whole blood) is not where the logistic drop lives, within what one PBMC cohort can show. New open pattern, LightGBM only: GSE40396 depends on GSE6269 being in the training set (anti-predictive without it). The drop stays unattributed. **Correction to the record:** the in-flight board block of 06.11. (removed 08.11.) said "GEO carries no per-sample age for the 5 cohorts"; that was wrong — per the GEO age check entry (06.11.) GEO carries per-sample ages for GSE40396 (months), GSE60244 (years) and GSE6269 (`Age: 10 y, when sample taken`), and NOT for GSE63990 and GSE42026. README, CORE and the 07.11. entry only ever said "no age for GSE63990", which stands.
+
+**Where.** `results/whole_blood_check.csv`, `results/run_whole_blood_check.json`, `run_whole_blood_check.py`, `tests/test_whole_blood_check.py`; README section 4 (new "where the cause could still hide" table + the sample-type row); `reports/2026-11-08-writeup.html` (same artifact link, updated). Branch `docs/2026-11-08-writeup`, local only.
+
+
+## 2026-11-08 — causes table filled from the batch-split run (docs only; the author)
+
+**Done.** README §4 "Where the cause could still hide" + `reports/2026-11-08-writeup.html`: lab-batch row now carries the batch-split run result with the verdict word exactly "undecided" (Gate B 1.000; dir 1 Δ 0.108 below all 20 controls; dir 2 Δ 0.039 inside the control spread; power limit 39 arrays / 12 bacterial), numbers re-read from `results/run_batch_split.json` on a worker branch. Tube row marked "not testable on its own (tube confounded with cohort)". Follow-up planned: **the deciding batch test** (200-draw null both directions in GSE63990 + GSE40396 hybridization-date batches behind a power gate; plan first, nothing runs before the author's approval).
+
+
+## 2026-11-08 — PLAN (not run): deciding test of the batch cause, 1000-draw null + GSE40396 date batches behind a power gate (the deciding batch test, approved by the author 08.11. 22:54; committed BEFORE any code or run)
+
+**Question.** the batch-split run left "does GSE63990's own array batch cost AUC?" at "undecided" (direction 1 below all 20 control draws, direction 2 not). With a much larger null, does the batch-out AUC sit in the tail of the size- and class-matched mixed-split null in BOTH directions?
+
+**Findings from planning (counts only; no model fitted, no new AUC looked at).**
+(1) Labelled GSE40396 arrays per hybridization date (the pipeline's own label rules): 2010-08-03 = 0 bacterial / 2 viral; 2011-07-22 = 0 / 8; 2012-04-24 = 8 / 12. All 8 bacterial arrays sit on one date. The plan's power gate (every held-out date: >= 5 bacterial AND >= 10 arrays) fails and cannot pass on this cohort (3 x 5 = 15 bacterial needed, 8 exist). Arm B therefore ends with "GSE40396 dates: underpowered, not run" plus the counted fact that date is confounded with infection class. (2) From the 20 draws on file: direction 1 (AUC 0.849) is below all 20; direction 2 (AUC 0.885) has 1 of 20 draws at or below it, right on the 5 % line, so the Monte-Carlo error of the tail share at 200 draws is about +-1.5 points.
+
+**Deviation from the plan, with reason: 1000 draws (rng seeds 0-999), not 200.** At 200 draws the verdict near the 5 % line would partly be decided by Monte-Carlo noise, not by the data. Seeds 0-199 are a prefix, so the plan's 200-draw count is ALSO reported (descriptive, no verdict word). Output: `results/batch_null1000.csv`. CPU only, EUR 0, at most ~15 CPU-min.
+
+**Pre-registered rule R-batch-1000** (logistic L2, raw, per direction; obs = batch-out AUC already on file in `results/batch_split.csv`; null = N size- and class-matched mixed splits of the same 185 arrays, built by `batch_split.partition` / `check_partition` / `fit_scores` unchanged; EPS 1e-12). Count form: `k_le` = null draws with AUC <= obs (a tie counts as at-or-below); `k_lt` = null draws with AUC < obs.
+- **"batch costs AUC"** = `k_le / N <= 0.05` in BOTH directions.
+- **"no batch cost"** = `k_lt / N >= 0.25` in BOTH directions.
+- **"undecided"** otherwise. Gate B first (batch-AUC >= 0.80, else the batch-split run stop text). Both tie rules lean toward "undecided".
+- Within-sample (same null, secondary): R-scale as in the batch-split run (within-sample Delta <= half the raw Delta in both directions, Delta = null mean - obs), read only if "batch costs AUC" fires.
+- Descriptive only, no verdict word: both tail shares per direction, 95 % Wilson interval of each tail share, the 200-draw-prefix counts (if they would read differently, the RESULT says so).
+- Arm B (GSE40396, leave-one-date-out) runs only if the power gate passes; same rule. No threshold change after data.
+
+**Gates (`--gates-only` writes nothing).** 0a = the batch-split run's (held-out GSE63990 AUCs within 0.005 of `folds_raw.csv`, counts 58/88/12/27, one `batch:` string per array); 0b = seeds 0-19 of the new null reproduce `results/batch_control.csv` (both transforms, both directions) to 1e-6; 0c = the four batch-out AUCs reproduce `results/batch_split.csv` to 1e-6; Gate B = 1.000 again, bar 0.80. Any miss: nothing written, stop.
+
+**Rivals + controls.** Training size / class mix: each draw matches the held-out side's n and class counts, asserted per draw. Batch = sub-population (four sites): NOT controllable; wording stays "batch or sub-population". GEO already batch-corrected: Gate B. Test noise (39 arrays, 12 bacterial small side): the null has the same test size, so the percentile is the control, plus the Wilson interval. The 7 re-run arrays: excluded as on file. Probe choice / NaN imputation read both batches: label-free, equal in test and null (inherited the batch-split run disclosure).
+**Honest limit.** The rule is written after seeing the batch-split run's result on the same 185 arrays (both batch-out AUCs and 20 of the 1000 draws are known). It sharpens the null; it is not an independent replication and adds no new patients. The 5 % / 25 % cut-offs are the plan's, fixed now. "Undecided" is a normal outcome. One cohort says nothing about the other four.
+
+**Judge.** Rules committed before code; Gates 0a/0b/0c; tests red on broken code (null not class-matched, date leaking into training, power gate bypassed, rule edges incl. N = 200, inverted tail, seed shifted by one); blind re-read of the RESULT sentences by a fresh subagent that recomputes k_le / k_lt from the CSV itself (same model family: sentence-vs-file, not design).
+
+**Claim-check block (before the run).** Claim: if the rule fires "batch costs AUC", the within-hospital batch lowers held-out AUC beyond what size/class-matched mixing explains, for GSE63990 only. Measured by: batch-out AUC vs the 1000-draw null. Rival: batch = sub-population; test noise; Monte-Carlo noise (1000 draws + Wilson interval). Judge not us: the registered rule + independent recomputation. Files: new only (`results/batch_null1000.csv`, `results/batch_dates_gse40396.csv`, `results/run_batch_deciding.json`); existing results byte-identical; no README / CORE edit; local only, never pushed, public mirror untouched.
+
+
+## 2026-11-08 — RESULT: deciding batch test — R-batch-1000 = "undecided" (the deciding batch test; PLAN entry 0e529bd, code cbd5d60, a worker branch)
+
+**Question (recap).** The cross-hospital drop (logistic random-CV 0.957 vs leave-one-cohort-out 0.881) is still unattributed. the batch-split run asked whether GSE63990's own two array batches cost AUC and answered "undecided" with only 20 control draws. Here the control is made 50 times larger so the answer is not decided by luck of the draw.
+
+**Design before numbers.** Train on one batch of GSE63990, test on the other (both directions). To know what AUC is "normal" for a test side of that size and class mix, we shuffle all 185 arrays into new train/test splits of exactly the same sizes and class counts (batches mixed on purpose), 1000 times (seeds 0-999), and score each. If the real batch-out AUC sits in the extreme low tail of that shuffle cloud in BOTH directions, the batch matters beyond size and class mix. Rule written before code: "batch costs AUC" = at most 5 % of draws at or below the observed AUC in both directions; "no batch cost" = at least 25 % strictly below in both; else "undecided". Deviation from the plan (stated in the PLAN): 1000 draws instead of 200. Gate 0a (the batch-split run's) passed, max diff 0.0005; Gate 0b: draws 0-19 reproduce `batch_control.csv`, max diff 1.1e-16; Gate 0c: the four batch-out AUCs reproduce `batch_split.csv` exactly; Gate B (can expression predict the batch?) = 1.000, bar 0.80.
+
+**Measured (logistic L2, raw).**
+- Direction 1 (train batch 0, test batch 1): observed AUC 0.849. Null mean 0.961. **4 of 1000 draws are at or below it (0.4 %, 95 % Wilson interval 0.16-1.0 %).** Delta = 0.112.
+- Direction 2 (train batch 1, test batch 0): observed AUC 0.885. Null mean 0.920. **121 of 1000 draws are at or below it (12.1 %, interval 10.2-14.3 %); 120 strictly below.** Delta = 0.035.
+- First 200 draws only (the plan's literal count): direction 1 = 0 of 200; direction 2 = 25 of 200 (12.5 %). Same word as at 1000.
+- Arm B (GSE40396, hybridization dates): labelled bacterial/viral arrays 2010-08-03 = 0/2, 2011-07-22 = 0/8, 2012-04-24 = 8/12. Power gate (>= 5 bacterial and >= 10 arrays per date) fails on two dates and cannot pass on this cohort. **"GSE40396 dates: underpowered, not run."** No AUC was looked at. Counted fact: date is confounded with infection class there (all 8 bacterial arrays sit on one date).
+
+**Pre-registered reading, applied as written: "undecided".** Direction 1 meets the "costs AUC" bar (0.4 % <= 5 %); direction 2 does not (12.1 %); neither direction pair meets "no batch cost". R-scale: not evaluated.
+
+**In plain words.** In one direction the real batch split is clearly worse than almost any random split of the same size (4 in 1000). In the other direction it is only a little worse than typical and about one random split in eight does as badly or worse. With 1000 draws the interval for that 12 % is tight (10-14 %), so "undecided" is now a real finding, not noise from too few draws: the batch effect is not symmetric. Only one direction shows it, and the weak direction is the one where the test side is the large batch (148 arrays), so a large effect would be harder to hide there. A plausible but UNTESTED reading: batch 1 (39 arrays, 12 bacterial) is a small or different sub-population, which hurts when it is the thing being predicted from but not when it is predicted.
+
+**Claim-check.** Claim: batch costs AUC beyond size/class mix. Measured: fires in one direction, not the other. Rival 1, batch = sub-population (four sites): not controllable, wording stays "batch or sub-population". Rival 2, test noise: the null has the same test size; Wilson interval shown. Rival 3, Monte-Carlo noise: 1000 draws, 200-draw prefix agrees. Honest limit: the rule was written after seeing the batch-split run's result on the same 185 arrays (not an independent replication; adds no patients); one cohort says nothing about the other four. Judge not us: rule committed first (0e529bd), Gates 0a/0b/0c, tests red on broken code (4 mutations of tie rule, power gate, 5 % edge, 25 % edge each made tests fail), and a blind fresh subagent recomputed k_le / k_lt / null means / date counts from the CSVs: all 7 sentences MATCH (same model family: sentence-versus-file check, not a design check). Suite 211 passed (191 + 20 new); all 55 pre-existing `results/` files md5-identical before and after.
+
+**Belief.** Unchanged in substance: within-hospital batch is a partial, one-directional candidate for the drop, not an established cause, and the drop stays unattributed. The README causes-table line is NOT edited here (plan rule): the lab-batch row can move from "undecided (20 draws)" to "undecided (1000 draws; costs AUC in one direction only)" after the author reads this.
+
+**Where.** `results/batch_null1000.csv`, `results/batch_dates_gse40396.csv`, `results/run_batch_deciding.json`, `run_batch_deciding.py`, `src/batch_deciding.py`, `src/batch_deciding_verdict.py`, `tests/test_batch_deciding.py`. A worker branch, local only (repo has no remote; never pushed; public mirror untouched). Runtime 11 CPU-min, EUR 0.
+
+## 2026-11-09 — Deciding batch test and causes-table update merged
+
+Process only. The deciding batch test (above) and a docs update were merged into the private working repo's main branch; full suite 211 passed. The docs update (README causes table and `reports/2026-11-08-writeup.html`) now carries the deciding-test numbers: direction 1 AUC 0.849 vs null mean 0.961, 4 of 1000 draws at or below; direction 2 AUC 0.885 vs null mean 0.920, 121 of 1000 (12.1 %, interval 10.2-14.3 %); verdict still undecided; GSE40396 dates underpowered, not run. **Belief.** Unchanged: the drop stays unattributed; within-hospital batch is a partial, one-directional candidate.
+
+
+## 2026-11-09 — Results of 30.10.–09.11. carried into this public copy
+
+**Question.** This copy stood at the 31.10. state: no Result 4, no whole-blood check, no batch tests, no write-up. Can the newer work come over without private material and without any number changing on the way?
+
+**Done.** Code, tests, config and result files for the LightGBM model-seed check (30.10.), the transfer matrix, the 10-seed Arm B run, the GEO age check, the whole-blood check, the batch-split run and the deciding batch test copied from the private working repo; README replaced by its reading-story version; `reports/2026-11-08-writeup.html` added; the diary entries above appended. Same privacy scrub as for the first copy (names, session and task-card ids, private links and folders removed; pronouns for the author → they). Card ids in three result JSONs (`card` label field) became plain run names; no number in any result file changed. Three internal HTML plan/result pages were left out; their content is in the entries above. CORE.md unchanged: its §7 already reads as the private one does now.
+
+**Measured.** Every number new to this copy was re-computed from the committed result files before the carry-over (chip-family difference −0.061, size-matched −0.062, within-sample −0.034, LightGBM −0.114 / −0.111 / −0.108; class-weighting +0.0005 / +0.0033 (SD 0.026); whole-blood logistic 0.857 vs 0.866, gap 0.081 vs 0.076; batch split 0.849 / 0.885; deciding test 4 / 1000 and 121 / 1000): all match. One stale count fixed: README and write-up said 172 / 168 tests; the suite now has 211.
+
+**Belief.** Unchanged: about 7 to 12 AUC points of the headline are hospital-specific; the per-cohort drop is a pattern without a named cause; within-hospital batch is a partial, one-directional candidate.
+
+**In plain terms.** The public edition of a lab notebook gets its new chapters: names blacked out, every number checked against the raw tables, printed only after a proofread.
+
+**Where.** This copy: README.md, LABBOOK.md, `reports/2026-11-08-writeup.html`, `results/`, `src/`, `tests/`, `tools/`.
