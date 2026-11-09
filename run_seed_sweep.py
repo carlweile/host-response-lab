@@ -1,8 +1,9 @@
-"""10-seed sweep of the raw cohort gap (, LABBOOK PLAN 2026-10-21).
+"""10-seed sweep of the raw cohort gap (the 10-seed raw sweep, LABBOOK PLAN 2026-10-21).
 
     python run_seed_sweep.py                  # repro gate, then seeds 200-209
     python run_seed_sweep.py --cache FILE     # reuse a pickled matrix
-    python run_seed_sweep.py --within-sample  # same sweep, within-sample scale
+    python run_seed_sweep.py --within-sample  # the within-sample 10-seed sweep: same sweep, within-sample scale
+    python run_seed_sweep.py --within-sample --lgbm-modelseed  # the LightGBM model-seed check: LightGBM model-seed side check, within-sample
 
 Raw scale by default; --within-sample ranks each patient's own genes first (no LightGBM
 model-seed side check there). Raw scale: Sweep: the random-CV fold seed moves, the LightGBM model seed stays
@@ -28,7 +29,7 @@ from run_seesaw_test import _commit
 from src import splits, train
 
 SEEDS = list(range(200, 210))
-KILL_GAP = 0.01  #: gap <= 0.01 for BOTH models in most seeds = seed artefact
+KILL_GAP = 0.01  # the 10-seed raw sweep: gap <= 0.01 for BOTH models in most seeds = seed artefact
 OUT_SWEEP = rp.RESULTS / "seedsweep_raw.csv"
 OUT_MODEL = rp.RESULTS / "seedsweep_lgbm_modelseed.csv"
 OUT_SUMMARY = rp.RESULTS / "seedsweep_raw_summary.csv"
@@ -36,6 +37,11 @@ META = rp.RESULTS / "run_seedsweep.json"
 OUT_SWEEP_WS = rp.RESULTS / "seedsweep_withinsample.csv"
 OUT_SUMMARY_WS = rp.RESULTS / "seedsweep_withinsample_summary.csv"
 META_WS = rp.RESULTS / "run_seedsweep_withinsample.json"
+OUT_MODEL_WS = rp.RESULTS / "seedsweep_lgbm_modelseed_withinsample.csv"
+META_MODEL_WS = rp.RESULTS / "run_seedsweep_lgbm_modelseed_withinsample.json"
+GATE_TOL_MODELSEED = 1e-9  # the LightGBM model-seed check
+READ_A_LINE = 0.01  # reading (a): |mean - on-file value| above this replaces the number
+READ_B_SDS = 2.0  # reading (b): mean paired difference below this many SDs withdraws the claim
 
 
 def sweep_rows(X, y, cohort, seed: int, model_seed: int = 0) -> list[dict]:
@@ -50,6 +56,54 @@ def sweep_rows(X, y, cohort, seed: int, model_seed: int = 0) -> list[dict]:
                  random_cv_auc=r["random_cv"], loco_auc=r["leave_one_cohort_out"],
                  gap=r["random_cv"] - r["leave_one_cohort_out"])
             for m, r in wide.iterrows()]
+
+
+def lgbm_loco(X, y, cohort, model_seed: int) -> float:
+    """Mean LightGBM LOCO AUC at fold seed 0 for one LightGBM model seed."""
+    res = train.run_both_schemes(X, y, cohort, seed=0, model_seed=model_seed)
+    aucs = [r.auc for r in res if r.model == "lightgbm" and r.scheme == "leave_one_cohort_out"]
+    if len(aucs) != cohort.nunique() or any(a is None for a in aucs):
+        raise ValueError(f"model seed {model_seed}: undefined LOCO AUC")
+    return sum(aucs) / len(aucs)
+
+
+def compare_modelseed(raw_csv: Path, ws_csv: Path, on_file_ws: float) -> dict:
+    """Paired raw vs within-sample LightGBM LOCO over model seeds, with both pre-registered readings."""
+    raw = pd.read_csv(raw_csv).set_index("model_seed")["loco_auc"]
+    ws = pd.read_csv(ws_csv).set_index("model_seed")["loco_auc"]
+    if set(raw.index) != set(ws.index):
+        raise ValueError("raw and within-sample model seeds differ")
+    diff = (ws - raw.loc[ws.index])
+    stat = lambda s: dict(mean=float(s.mean()), sd=float(s.std()), min=float(s.min()), max=float(s.max()))
+    return dict(n=int(len(ws)), raw=stat(raw), within_sample=stat(ws), paired_diff=stat(diff),
+                on_file_within_sample=on_file_ws,
+                reading_a=bool(abs(ws.mean() - on_file_ws) > READ_A_LINE),
+                reading_b=bool(diff.mean() < READ_B_SDS * diff.std()))
+
+
+def modelseed_check(X, y, cohort) -> int:
+    """The LightGBM model-seed check: within-sample LightGBM LOCO over model seeds; writes only its own two files."""
+    t0, w0 = time.process_time(), time.time()
+    ref = pd.read_csv(rp.RESULTS / "summary_withinsample.csv")
+    on_file = float(ref[(ref["model"] == "lightgbm") & (ref["scheme"] == "leave_one_cohort_out")]["mean_auc"].iloc[0])
+    gate = abs(lgbm_loco(X, y, cohort, 0) - on_file)
+    print(f"repro gate (model seed 0 vs summary_withinsample.csv): |diff| = {gate:.2e}", flush=True)
+    if not np.isfinite(gate) or gate > GATE_TOL_MODELSEED:
+        print("REPRO GATE FAILED: the side check would not measure the number on file. Stopping.")
+        return 1
+    rows = []
+    for ms in SEEDS:
+        rows.append(dict(model_seed=ms, model="lightgbm", loco_auc=lgbm_loco(X, y, cohort, ms)))
+        print(f"  lightgbm model seed {ms} done ({time.time() - w0:.0f} s)", flush=True)
+    pd.DataFrame(rows).to_csv(OUT_MODEL_WS, index=False)
+    paired = compare_modelseed(OUT_MODEL, OUT_MODEL_WS, on_file)
+    META_MODEL_WS.write_text(json.dumps(dict(
+        date=date.today().isoformat(), commit=_commit(), seeds=SEEDS, scale="within_sample",
+        n_samples=int(X.shape[0]), n_genes=int(X.shape[1]), repro_gate_max_diff=gate,
+        paired=paired, cpu_s=round(time.process_time() - t0, 1), wall_s=round(time.time() - w0, 1),
+    ), indent=2), encoding="utf-8")
+    print(json.dumps(paired, indent=2) + f"\nwrote {OUT_MODEL_WS}, {META_MODEL_WS}")
+    return 0
 
 
 def repro_gate(X, y, cohort, ref: str = "summary_raw.csv") -> float:
@@ -82,8 +136,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--cache", type=Path, default=None, help="pickled (X, y, cohort)")
     ap.add_argument("--within-sample", action="store_true", help="rank each patient's own genes first")
+    ap.add_argument("--lgbm-modelseed", action="store_true",
+                    help="with --within-sample: only the LightGBM model-seed side check (the LightGBM model-seed check)")
     args = ap.parse_args(argv)
     ws = args.within_sample
+    if args.lgbm_modelseed and not ws:
+        ap.error("--lgbm-modelseed needs --within-sample (the raw side check is already on file)")
     ref, gate_tol = ("summary_withinsample.csv", 1e-12) if ws else ("summary_raw.csv", 1e-9)
 
     t0, w0 = time.process_time(), time.time()
@@ -92,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if ws:
         X = splits.rank_normalize_within_sample(X)
+    if args.lgbm_modelseed:
+        return modelseed_check(X, y, cohort)
     gate = repro_gate(X, y, cohort, ref)
     print(f"repro gate (seed 0 vs {ref}): max |diff| = {gate:.2e}", flush=True)
     if not np.isfinite(gate) or gate > gate_tol:
@@ -110,11 +170,7 @@ def main(argv: list[str] | None = None) -> int:
 
     lgbm = []
     for ms in [] if ws else SEEDS:
-        res = train.run_both_schemes(X, y, cohort, seed=0, model_seed=ms)
-        aucs = [r.auc for r in res if r.model == "lightgbm" and r.scheme == "leave_one_cohort_out"]
-        if len(aucs) != cohort.nunique() or any(a is None for a in aucs):
-            raise ValueError(f"model seed {ms}: undefined LOCO AUC")
-        lgbm.append(dict(model_seed=ms, model="lightgbm", loco_auc=sum(aucs) / len(aucs)))
+        lgbm.append(dict(model_seed=ms, model="lightgbm", loco_auc=lgbm_loco(X, y, cohort, ms)))
         print(f"  lightgbm model seed {ms} done ({time.time() - w0:.0f} s)", flush=True)
     lgbm = pd.DataFrame(lgbm)
     out_sweep, out_summary, meta = (OUT_SWEEP_WS, OUT_SUMMARY_WS, META_WS) if ws else (OUT_SWEEP, OUT_SUMMARY, META)

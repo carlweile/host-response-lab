@@ -9,6 +9,9 @@
   "cohorts": [
     {
       "accession": "GSE63990",
+      "platform_family": "affymetrix",
+      "age_group": "mixed",
+      "age_source": "Tsalik 2016, PMID 26791949, Table 1: derivation cohort ages 6-88 y (mean 45); minors and adults mixed, no clean under-18 / 18+ split -> NOT PINNED",
       "note": "Tsalik et al., acute respiratory illness, bacterial vs viral vs non-infectious",
       "expected_counts": {"viral": 115, "bacterial": 70},
       "source_of_expected": "Tsalik et al., Sci Transl Med 2016;8:322ra11, PMID 26791949, doi:10.1126/scitranslmed.aad6873, Table 1 + text: 273 ill subjects = 70 bacterial, 115 viral, 88 non-infectious; Methods: two microarray batches with seven overlapping samples. Matches our parse only after exclude_samples (arrays 73/117/90 -> subjects 70/115/88). Checked by Claude (AI), not a human, 2026-10-21.",
@@ -19,24 +22,36 @@
     },
     {
       "accession": "GSE42026",
+      "platform_family": "illumina",
+      "age_group": "children",
+      "age_source": "Herberg 2013, PMID 23901082, title + abstract: 'children hospitalized' with H1N1/RSV/bacterial infection",
       "note": "Herberg et al., children, H1N1 influenza vs bacterial",
       "expected_counts": { "viral": 41, "bacterial": 18 },
       "source_of_expected": "GEO GSE42026 Series overall design (deposited by the authors of Herberg et al., J Infect Dis 2013;208:1664-8, PMID 23901082, doi:10.1093/infdis/jit348): after excluding co-infections, arrays analysed H1N1/09 n=19, RSV n=22, bacterial n=18, controls n=33 -> viral 41, bacterial 18. Cross-check: Tsalik et al. Sci Transl Med 2016 Table 1 lists GSE42026 as 59 subjects (18 + 41). The paper's own Results (25 H1N1 with 6 co-infected, 34 RSV with 11 co-infected) imply 23 RSV, one more than GEO's 22 arrays. Checked by Claude (AI), not a human, 2026-10-21."
     },
     {
       "accession": "GSE60244",
+      "platform_family": "illumina",
+      "age_group": "adults",
+      "age_source": "Suarez 2015, PMID 25637350, title + abstract: 'hospitalized adults', patient median age 61 y (IQR 50-76)",
       "note": "Suarez et al., respiratory tract infection, bacterial vs viral vs co-infection",
       "expected_counts": {"viral": 71, "bacterial": 22},
       "source_of_expected": "Suarez et al., J Infect Dis 2015;212:213-22, PMID 25637350, doi:10.1093/infdis/jiv047, Methods: 158 samples [22 bacterial LRTI, 71 viral LRTI, 25 bacterial-viral coinfections, 40 healthy controls]"
     },
     {
       "accession": "GSE40396",
+      "platform_family": "illumina",
+      "age_group": "children",
+      "age_source": "Hu 2013, PMID 23858444, title + abstract: 'febrile children' (30 febrile children; MeSH infant / preschool)",
       "note": "Hu et al., paediatric febrile illness, viral vs bacterial. The 13 afebrile virus-positive children ('fever: no') are excluded, as in the paper's own viral-vs-bacterial test (the author's decision 19.10.2026).",
       "expected_counts": {"viral": 22, "bacterial": 8},
       "source_of_expected": "Hu et al., PNAS 2013;110:12792-7, PMID 23858444, doi:10.1073/pnas.1302968110, Results first paragraph: 30 febrile children = 22 viral (8 HHV-6, 8 adenovirus, 6 enterovirus) + 8 bacterial"
     },
     {
       "accession": "GSE6269",
+      "platform_family": "affymetrix",
+      "age_group": "children",
+      "age_source": "Ramilo 2007, PMID 17105821, abstract: 'pediatric patients with acute infections'",
       "note": "Ramilo et al., paediatric acute infection, influenza vs bacterial pathogens. Run on three array platforms; we take GPL96 only, because the variants are the same patients and would otherwise be treated as independent cohorts.",
       "prefer_platform": "GPL96",
       "expected_counts": {"viral": 18, "bacterial": 73},

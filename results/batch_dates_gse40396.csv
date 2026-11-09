@@ -1,0 +1,4 @@
+date,n_all,n_bacterial,n_viral,n_labelled,fails_gate
+2010-08-03,26,0,2,2,True
+2011-07-22,17,0,8,8,True
+2012-04-24,22,8,12,20,False

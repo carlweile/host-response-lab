@@ -1,367 +1,336 @@
 # host-response-lab
 
-**How much of a published "bacterial or viral?" blood-test score survives a
-hospital it has never seen?** A small, fully re-runnable reproduction study on
-public gene-expression data.
+**How much of a published diagnostic AUC survives a hospital the model has never seen?**
+A small, public, CPU-only reproduction study on blood gene-expression data, built
+so that one command computes the optimistic number and the honest number from the
+same data and prints the gap between them.
 
-## The question
+> Constitution: [CORE.md](CORE.md) (question, success criteria, kill criterion).
+> Diary: [LABBOOK.md](LABBOOK.md) (every run, dated, with its pre-registered
+> rules). Write-up for a general reader: [`reports/2026-11-08-writeup.html`](reports/2026-11-08-writeup.html).
 
-When a patient arrives with a fever, doctors often cannot tell quickly whether a
-bacterial or a viral infection causes it, and antibiotics only help against
-bacteria. Research groups have published "host-response signatures": patterns
-in the patient's own blood gene activity that tell the two apart. Papers report
-scores (AUCs) of around 0.93 to 0.95 (literature figure; see *Prior art*, not
-re-measured here).
+## 1. The question
 
-Most of those numbers come from testing a model on patients from the **same
-studies** it learned from. This repo asks how much of the score is left when the
-model is tested on a **whole hospital cohort it never saw** during training.
+When a child or an adult arrives in an emergency department with a fever, the
+hard decision is *bacterial or viral?* Antibiotics help one and not the other.
+A line of research since about 2007 reads the patient's own immune response in
+blood (which genes are switched on, the "host response") and trains a classifier
+on it. Published papers report areas under the ROC curve (AUC) of **0.93 to
+0.95**; two such tests are FDA-cleared.
 
-This is a reproduction and validation study, not a new test. Commercial tests
-already exist (see *Prior art* below).
+Those AUCs are almost always measured by splitting one study's patients at
+random into training and test sets. Every patient in the test set then shares a
+hospital, a lab protocol and a microarray chip with the training set. A model is
+free to learn those local quirks and gets credit for them. A real test is used
+on a hospital it has never seen.
 
-## Design in one picture
+**So: of a 0.93, how much is biology that travels, and how much is the hospital?**
 
-```
-5 public patient cohorts (GEO), 458 blood samples, 12,040 shared genes
-                │
-   ┌────────────┴─────────────┐
-   │                          │
-random split               leave-one-cohort-out
-(patients from every       (train on 4 cohorts,
- cohort mixed into          test on the 5th, then
- train and test)            rotate through all 5)
-   │                          │
-   └──── same model, same data, same run ────┘
-                │
-     the GAP between the two scores = the headline
-```
+That gap is measurable from public data, it is reported inconsistently in the
+literature, and when this project started (October 2026) we found no public code that
+recomputes it in one run. That is the whole contribution: not a better
+classifier, not a new gene signature, not a clinical claim. An engineering and
+reproducibility piece. (Prior art, including the FDA-cleared products and the
+large benchmark that deliberately does *not* measure this, is in section 8.)
 
-- **Two models:** a simple one (logistic regression) and a flexible one
-  (LightGBM, gradient-boosted trees).
-- **Two published signatures, used exactly as printed** (nothing re-fitted):
-  Herberg 2016 (2 genes) and Sweeney 2016 (7 genes).
-- **Labels are checked against the papers.** The pipeline counts bacterial and
-  viral patients per cohort and refuses to train if the counts disagree with the
-  numbers published for that cohort. All 5 cohorts pass (the author read 2 of the
-  5 published counts in the papers; 2 were checked by AI only, see *Honest limits*).
+## 2. The design in plain words
 
-## Key numbers, in plain words
+Five public cohorts from GEO, each from a different study and hospital, all with
+bacterial/viral labels, all on microarray chips. After label parsing: **458
+patient arrays, 12,040 genes shared by every chip.**
 
-**What an AUC means here:** pick one bacterial and one viral patient at random.
-An AUC of 0.95 means the model gives the bacterial patient the higher
-"bacterial" score 95 times out of 100. 0.50 would be a coin flip.
-
-| model | random split | new hospital (held out) | gap | gap over 10 random seeds |
-|---|---|---|---|---|
-| logistic regression | 0.957 | 0.881 | 0.076 | 0.073 ± 0.004 |
-| LightGBM | 0.954 | 0.827 | 0.127 | 0.123 ± 0.006 |
-
-In words:
-
-1. **A random split looks excellent, a new hospital looks clearly worse.** The
-   simple model drops from 0.96 to 0.88; the flexible model drops further, to
-   0.83. In the worst case the flexible model reaches only 0.70 on one held-out
-   cohort (GSE6269), where the simple model still reaches 0.94.
-2. **The drop is not luck of the split.** Repeated with 10 different random
-   splits, the gap stays between 0.065 and 0.076 for the simple model and
-   between 0.113 and 0.133 for the flexible one. Only the split seed was varied
-   here; LightGBM's own model seed adds more noise (see *Technical detail*).
-3. **A fair per-patient fix closes part of it.** If each patient's
-   genes are ranked against that patient's own other genes (something a
-   bedside test could also do, because it needs no other patient), the
-   held-out scores rise to 0.895 and 0.888. That closes little of the simple
-   model's gap and about half of the flexible model's; both end near 0.07
-   (0.065 and 0.067 averaged over 10 random-split seeds; the held-out score itself does not move with the split).
-4. **The published signatures get no random-split bonus, as expected.** Herberg's
-   gap is −0.004; Sweeney even scores lower on the random split (gap −0.075),
-   probably because mixing cohorts puts each cohort's scores on its own offset
-   (inferred, not tested; gaps are 10-seed means; see *Technical detail*). A frozen score
-   learns nothing from our data, so it cannot learn one hospital's quirks.
-   Held out, Herberg scores 0.882 (3 cohorts) and Sweeney 0.912 (5 cohorts;
-   0.901 on the 2 cohorts its authors did not use to pick its genes). That is
-   slightly better than our trained simple model on the same cohorts (0.846 and
-   0.881; no confidence intervals), and 3 of Sweeney's 5 cohorts were used to
-   pick its genes. This fits the reading
-   that the gap comes from fitting to the data. It does not prove it.
-
-Sources: `results/summary_raw.csv`, `results/seedsweep_raw_summary.csv`,
-`results/gapdiag_cohorts.csv` (per-cohort numbers), `results/summary_withinsample.csv`,
-`results/frozen_signatures_summary.csv`.
-
-## How to re-run it
-
-Tested with Python 3.12. The GEO downloads are on the order of 100 MB. CPU only, no GPU.
-
-```
-python -m pip install -r requirements.txt
-python run_pipeline.py --fetch        # download the 5 GEO cohorts into data/ (once)
-python run_pipeline.py --review       # label counts vs the published counts
-python run_pipeline.py --train        # both schemes, both models -> results/
-python run_pipeline.py --train --within-sample-normalize
-python run_seed_sweep.py              # the 10-seed repeat (about 20 minutes)
-python run_frozen_signatures.py       # the two published signatures
-python -m pytest -q                   # 127 tests; they need no download
-```
-
-The tests are built to fail on broken code: each one constructs the bug it
-guards against (for example, a co-infection counted as bacterial, a gene chosen
-on the whole dataset before the split, a score that peeks at other patients).
-
-## Honest limits
-
-- **AI-assisted, and not yet checked by a human expert.** The code, the label
-  parsing and most checks were written or run by an AI coding assistant
-  (Claude Code), directed by the author, a molecular biologist. Three AI code
-  reviews found no bug that changes a number on file, but **no human has
-  reviewed the code or the label table yet**. For two of the five cohorts the
-  published-count check was done by the AI alone; for a third the author accepted
-  the AI's comparison without re-reading the paper. Details in *What the author
-  checked vs what AI did*.
-- **Small.** 5 cohorts and 458 samples, roughly a tenth of the largest published
-  comparison. No confidence intervals on the per-cohort numbers; the smallest
-  cohort has 8 bacterial patients.
-- **Flattered by exclusions.** Patients with co-infections or non-infectious
-  inflammation are left out, as in several published papers. A real emergency
-  department would be harder.
-- **Microarray only, archived data only.** Results may not transfer to RNA-seq,
-  and a gap measured on old cohorts is not a prospective clinical failure rate.
-- **One label decision is inferred.** One cohort (GSE63990) has 7 re-run arrays
-  of patients already in it; which 7 is inferred from the data, not stated by
-  GEO.
-- **Not novel as a method.** Leave-one-dataset-out validation is already
-  packaged elsewhere (MetaIntegrator). The contribution is a small public
-  pipeline where one command produces both numbers from the same data, and the
-  labels check themselves against the papers.
-
-## How the work was done
-
-`LABBOOK.md` is the lab diary, one dated entry per session: the question, the
-plan (thresholds written down **before** each run), what was measured, and
-what we now believe. `CORE.md` holds the lab's fixed question, success and stop
-criteria. `CLAUDE.md` holds the rules every contributor (human or AI) follows,
-such as "no gene selection outside the cross-validation fold" and "always
-report both numbers together".
-
----
-
-# Technical detail
-
-### Result (v1, 2026-10-21)
-
-Five public microarray cohorts (GSE63990, GSE42026, GSE60244, GSE40396, GSE6269
-on GPL96), 458 labelled arrays (the 7 GSE63990 re-run arrays removed; see Labels), 12,040 shared genes,
-raw scale.
-
-| data | model | random-CV AUC, fold seed 0 | leave-one-cohort-out AUC | gap, fold seed 0 | gap over 10 fold seeds (mean ± SD, range) |
+| cohort | study | chip family | age group | bacterial | viral |
 |---|---|---|---|---|---|
-| **458 arrays (main)** | logistic L2 | 0.957 | 0.881 | 0.076 | 0.073 ± 0.004 (0.065-0.076) |
-| **458 arrays (main)** | LightGBM | 0.954 | 0.827 | 0.127 | 0.123 ± 0.006 (0.113-0.133) |
-| comparison: with all 280 GSE63990 arrays (463) | logistic L2 | 0.953 | 0.882 | 0.071 | 0.071 ± 0.004 (0.065-0.076) |
-| comparison: with all 280 GSE63990 arrays (463) | LightGBM | 0.954 | 0.839 | 0.115 | 0.111 ± 0.003 (0.106-0.117) |
+| GSE63990 | Tsalik 2016 | Affymetrix | mixed, 6–88 y | 70 | 115 |
+| GSE42026 | Herberg 2013 | Illumina | children | 18 | 41 |
+| GSE60244 | Suarez 2015 | Illumina | adults | 22 | 71 |
+| GSE40396 | Hu 2013 | Illumina | children | 8 | 22 |
+| GSE6269 | Ramilo 2007 | Affymetrix | children | 73 | 18 |
 
-The comparison rows keep 5 repeat arrays of GSE63990 patients in the data (an
-earlier version of this repo); removing them makes the gap slightly *larger*, not
-smaller (for LightGBM the change is inside its own model-seed noise, see below). Sources: `results/summary_raw.csv`, `results/seedsweep_raw_summary.csv`;
-comparison `results/summary_raw_all280arrays.csv`,
-`results/seedsweep_raw_summary_all280arrays.csv`.
+The same two models (an L2 logistic regression and a LightGBM gradient-boosted
+tree, both class-weighted, no gene selection anywhere) are trained and scored
+two ways on exactly the same matrix:
 
-In one sentence: of a random-CV AUC of about 0.95 to 0.96 (10-seed means: logistic 0.953 raw /
-0.960 within-sample, LightGBM 0.950 / 0.954), about 0.88 survives a hospital cohort the
-model never saw on the raw scale (logistic 0.881, gap 0.073 ± 0.004 over 10 fold
-seeds; LightGBM 0.827, gap 0.123 ± 0.006, with a wide model-seed range inferred
-from the side check below), and about 0.89 survives when each patient is
-normalised against their own genes only (within-sample ranking, legal at the
-bedside; logistic 0.895, gap 0.065 ± 0.003; LightGBM 0.888, gap 0.067 ± 0.004,
-both over 10 fold seeds, LightGBM's model seed not swept on this scale). Roughly
-6.5 to 12 AUC points of the headline are hospital-specific. Sources: raw
-`results/summary_raw.csv`, `results/seedsweep_raw_summary.csv`,
-`results/seedsweep_raw.csv`; within-sample `results/summary_withinsample.csv`,
-`results/seedsweep_withinsample_summary.csv`, `results/seedsweep_withinsample.csv`.
+- **Random cross-validation.** Patients of all five hospitals are shuffled and
+  split 5-fold. This is the number papers usually show.
+- **Leave-one-cohort-out.** Train on four hospitals, test on the fifth, repeat
+  five times, average. This is the number a new hospital would see.
 
-How to read it, and what it does not say:
+The headline output is not an AUC. It is the **difference** between those two.
 
-- **Not a seed accident.** The gap stays above 0.06 for both models in all 10
-  random-CV fold seeds. LightGBM's own randomness is much larger: its held-out AUC
-  moves between 0.780 and 0.861 across 10 model seeds (SD 0.023), so its gap is
-  probably "somewhere around 0.09-0.17" (inferred: random-CV was not re-run per
-  model seed). Read the LightGBM gap as "clearly larger than logistic, size
-  uncertain". The logistic model is deterministic.
-- **The size of the gap depends on how you average.** The headline mixes a pooled
-  random-CV AUC with an unweighted mean over five cohorts. Compared cohort by cohort
-  (random-CV AUC inside that cohort vs its held-out AUC), the gap is smaller, 0.054
-  (logistic) and 0.090 (LightGBM) at fold seed 0, but **positive in all five cohorts
-  for both models** (smallest: 0.033 logistic, 0.011 LightGBM).
-- **Flattered by the exclusions.** Co-infections and non-infectious
-  inflammation are excluded, which makes both numbers look better than a real
-  emergency department would.
-- **Rank-normalising within a cohort is not reported.** That setting reads the whole
-  held-out cohort at once; its random-CV number was shown to be a transductive
-  artefact (LABBOOK, 2026-10-19).
-- It is not a new signature, not a better classifier, and not a clinical claim.
+Three habits from wet-lab work are enforced in code, because this kind of study
+is easy to rig by accident:
 
-### v1.1: frozen published signatures (2026-10-21)
+1. **Labels are guilty until verified.** The parser's class counts per cohort
+   must equal the counts printed in each study's paper, or the pipeline refuses
+   to train. Counts are never edited to match the code.
+2. **Every rule is written before the run.** Each experiment's thresholds and
+   verdict words are written into the LABBOOK first; the run does not get to
+   change them. Exceptions are disclosed in the entry concerned. The
+   pre-registration commits live in the private working repo, so their timing
+   cannot be checked from this repository's history.
+3. **Tests go red on broken code.** Each of the 211 tests constructs the bug it
+   guards against (a co-infection parsed as "bacterial", a test cohort leaking
+   into training, a transform that reads other patients) and asserts the guard
+   fires.
 
-Question: does the gap also hit gene lists that were chosen **outside** our data?
-Two published scores, used exactly as printed, nothing re-fitted: Herberg 2016
-(FAM89A − IFI44L) and Sweeney 2016 (geometric mean of IFI27, JUP, LAX1 minus that of
-HK3, TNIP1, GPAA1, CTSB). Gene lists, signs and score rules are pinned to the papers
-**and their supplements** in `config/signatures.json`: Herberg eTable 3 (directions),
-Supplementary Methods eq. 1 (log2 FAM89A − log2 IFI44L) and eTable 6 (validation
-sets); Sweeney fig. S3 and Table S1 (the 7 genes and their directions), plus the
-authors' MetaIntegrator `calculateScore` code. The supplements confirmed every gene
-and sign; the numbers did not change.
+## 3. The four results
 
-Two limits come first, because they change what can be said:
+### Result 1: about 7 to 12 AUC points of the headline are hospital-specific
 
-- **FAM89A has no probe on GPL571 or GPL96**, so Herberg is scored on 3 cohorts
-  (GSE42026, GSE60244, GSE40396), never on GSE63990 or GSE6269.
-- **Sweeney is not fully outside our data.** Its own Table 1 lists GSE6269, GSE40396
-  and GSE42026 as cohorts its genes were *chosen on* (also fig. S3). Only GSE60244
-  and GSE63990 are independent of it. Herberg chose its genes on a new cohort, not
-  on any of ours (possible patient overlap with GSE42026, the same group's earlier
-  cohort, is not stated either way); its eTable 6 scored GSE40396, GSE60244 and a
-  *different* part of GSE6269 (the GPL570 arrays, not ours; whether they share
-  patients with our GPL96 arrays is not checked). GSE42026 is not named
-  as a dataset anywhere in the Herberg 2016 main text or supplement.
+Raw expression scale, 458 arrays. Random-CV at fold seed 0, then the spread over
+10 fold seeds.
 
-| score | cohorts | random-CV AUC (pooled) | leave-one-cohort-out AUC | gap (10 fold seeds) | our logistic / LightGBM, held out, same cohorts |
+| model | random-CV AUC | leave-one-cohort-out AUC | gap | gap over 10 fold seeds |
+|---|---|---|---|---|
+| logistic L2 | 0.957 | 0.881 | 0.076 | 0.073 ± 0.004 (0.065–0.076) |
+| LightGBM | 0.954 | 0.827 | 0.127 | 0.123 ± 0.006 (0.113–0.133) |
+
+In words: both models look like a 0.95 test when the hospitals are mixed.
+Tested on an unseen hospital, the logistic model is a 0.88 test and the tree
+model a 0.83 test. The gap is positive in all 10 fold seeds and, read cohort by
+cohort, positive in **all five hospitals for both models** (smallest single-cohort
+gap 0.033 logistic, 0.011 LightGBM). The per-cohort held-out AUC ranges from
+0.83 to 0.94 (logistic) and 0.70 to 0.90 (LightGBM).
+
+The more flexible model pays more. LightGBM also carries its own randomness: over
+10 model seeds its held-out AUC moves between 0.780 and 0.861 (SD 0.023), so its
+gap should be read as "clearly larger than logistic, size uncertain". The
+logistic model is deterministic.
+
+Sources: `results/summary_raw.csv`, `results/folds_raw.csv`,
+`results/seedsweep_raw_summary.csv`, `results/seedsweep_lgbm_modelseed.csv`;
+per-cohort gaps `results/gapdiag_cohorts.csv`.
+
+### Result 2: a bedside-legal transform gives back 1 point (logistic) or 6 points (LightGBM)
+
+Most published pipelines normalise a gene against the other patients of the same
+cohort. A bedside test sees one patient at a time, so that is not allowed here.
+Instead each patient's 12,040 genes are ranked against *each other* only
+("within-sample" ranking; no other patient is read, in training or test).
+
+| model | random-CV AUC | leave-one-cohort-out AUC | gap over 10 fold seeds |
+|---|---|---|---|
+| logistic L2 | 0.963 | 0.895 | 0.065 ± 0.003 (0.061–0.068) |
+| LightGBM | 0.958 | 0.888 | 0.067 ± 0.004 (0.062–0.074) |
+
+The gap does not vanish. For logistic it shrinks by about one point; for
+LightGBM by about six, and that six survives LightGBM's own randomness: over 10
+paired model seeds the within-sample run beat the raw run every time (mean gain
++0.064, range +0.027 to +0.112; within-sample held-out 0.891 ± 0.006).
+
+So the leak-free answer to the question in section 1 is: **of a random-CV AUC of
+about 0.96, about 0.88 survives an unseen hospital on the raw scale and about
+0.89 survives with per-patient ranking.** A whole-cohort rank normalisation
+*would* make the gap look closed, and was shown on synthetic data to be a
+transductive artefact (it reads the test set); its numbers are not quoted.
+
+Sources: `results/summary_withinsample.csv`,
+`results/seedsweep_withinsample_summary.csv`,
+`results/seedsweep_lgbm_modelseed_withinsample.csv`.
+
+### Result 3: frozen published signatures have no random-CV bonus, which is what fitting predicts
+
+If the gap comes from a model learning hospital quirks, a gene score that is
+**not fitted** on these data should show no gap. Two published scores were used
+exactly as printed in their papers and supplements, nothing re-fitted: Herberg
+2016 (two genes) and Sweeney 2016 (seven genes).
+
+| score | cohorts | random-CV AUC | leave-one-cohort-out AUC | gap (10 fold seeds) | our logistic / LightGBM held out, same cohorts |
 |---|---|---|---|---|---|
 | Herberg 2-gene | 3 | 0.876 | 0.882 | −0.004 ± 0.005 | 0.846 / 0.847 |
 | Sweeney 7-gene | 5 | 0.837 | 0.912 | −0.075 ± 0.002 | 0.881 / 0.827 |
-| Sweeney 7-gene, only its 2 independent cohorts | 2 | — | 0.901 | — | 0.885 / 0.851 |
+| Sweeney, only its 2 independent cohorts | 2 | — (not computed on 2 cohorts) | 0.901 | — | 0.885 / 0.851 |
 
-What it says:
+The frozen scores have **no** random-CV advantage (the pooled number is the same
+or lower, because each cohort puts the fixed score on its own offset). Held out,
+they do about as well as or slightly better than the trained logistic model. This fits the reading that
+the Result-1 gap comes from fitting; it does not prove it. Limits that matter:
+Herberg's gene FAM89A has no probe on two of the five chips, so it is scored on
+three cohorts; Sweeney's own paper lists three of our five cohorts among those its
+genes were chosen on, so only two are truly independent of it. One of the Sweeney
+authors confirmed our reading of their score by e-mail (LABBOOK 2026-10-23).
 
-- **A frozen score has no random-CV bonus, and this is expected.** Nothing is
-  trained, so nothing can learn one hospital's quirks. Random-CV mixes cohorts in
-  every fold, and each cohort puts the score on its own offset, so the pooled
-  number comes out the *same or lower* (gap between −0.100 and +0.010 in every
-  variant and fold seed). This fits the reading that the v1 gap comes from
-  fitting to the data. It does not prove it.
-- **Held out, the frozen scores do about as well as our trained models.** Herberg
-  0.88 vs logistic 0.85; Sweeney 0.90 on its independent cohorts vs logistic 0.89.
-  These are means over 2-3 cohorts at one fold seed, with no confidence intervals.
-  The smallest cohort has 8 bacterial patients, so read this as "about the same as
-  logistic, and above LightGBM", not as "better".
-- **Robust to the reading of the papers.** Raw instead of log2 intensities, a
-  probe choice that looks at no expression value, or the other reading of Sweeney's
-  "times the ratio of the number of genes" (factor 3/4 on the bacterial term only)
-  moves the held-out means by ≤ 0.016. The direction stays the same in every variant.
-- **The authors' own software removes part of the pooling penalty, not all of it.**
-  MetaIntegrator's `calculateScore` has no gene-count factor and z-scores the score
-  inside each dataset. That reads the whole cohort, so it is not a per-patient
-  score, and we report it as a separate row: Sweeney random-CV 0.837 → 0.859, gap
-  −0.075 → −0.055, held-out unchanged (0.912, as it must be). Herberg: gap −0.003.
-  Our guess at why a gap is left: each cohort has a different bacterial/viral mix,
-  so centring on the cohort mean still puts cohorts on different offsets
-  (inferred, not tested).
+Sources: `results/frozen_signatures_summary.csv`, `config/signatures.json`.
 
-Checks: a pre-registered positive control (the run stops if either score falls
-below 0.75 on a cohort its own paper reports it working on; it did not fire). On
-GSE40396, the one cohort where Herberg's eTable 6 has the same counts as ours
-(8 bacterial / 22 viral), our AUC is 0.892 and theirs is 89.2 %. A
-blind fresh AI agent re-built both scores from the papers' definitions without
-seeing this code, and got every main number back to 3 decimals. 15 tests fail on
-broken code (wrong gene list, a gene list that disagrees with the supplement
-tables, flipped sign, a dropped gene, a score that reads other patients, a wrong
-ratio factor, z-scoring across instead of within cohorts). Sources:
-`results/frozen_signatures_summary.csv`, `results/frozen_signatures_cohorts.csv`,
-LABBOOK 2026-10-21 (PLANs c193407, 661ea85).
+### Result 4: the drop is not the chip family, and class weighting is not where it lives
 
-### What the author checked vs what AI did
+The held-out AUC differs by hospital. Does the size of the drop follow something
+we can name? Three candidates were pre-registered: chip family (Affymetrix vs
+Illumina), age group (children vs adults), class mix.
 
-This repo was built with an AI coding assistant (Claude Code). The author is a
-molecular biologist; the code, the label parsing and most checks were written or
-run by AI and then accepted by the author. Who did what, from the record in
-`LABBOOK.md`:
+- **Chip family: no.** On all 20 ordered train-on-one / test-on-one cohort pairs
+  (logistic, raw), same-family pairs transferred **worse** than cross-family
+  pairs: mean AUC 0.760 vs 0.821, difference −0.061. With every training cohort
+  cut to 30 arrays (20 draws) the difference is −0.062, so it is not that the
+  Illumina cohorts are small. Within-sample ranking −0.034; LightGBM −0.11 at
+  each of three seeds. Verdict by the pre-registered rule: "does not track".
+- **Class weighting: not where the drop lives.** Leave-one-cohort-out with class
+  weighting switched off moves the mean held-out AUC by +0.0005 (logistic) and
+  +0.003 (LightGBM, 10 model seeds; per-seed range −0.029 to +0.032, SD 0.026).
+  A first 3-seed read gave +0.0195 and "undecided"; the 10-seed run showed that
+  was seed luck.
+- **Age: not testable from public sources.** GSE63990 mixes ages 6 to 88 and
+  neither GEO (0 of 280 arrays carry an age) nor the paper gives per-patient
+  ages, so the children/adults grid cannot be built with these five cohorts.
+
+Before any of this ran, the new code had to reproduce all ten on-file held-out
+AUCs to within 0.005 (it did, largest difference 0.0006).
+
+Sources: `results/transfer_matrix.csv`, `results/transfer_sizematched.csv`,
+`results/balance_control_10seeds.csv`, `results/run_transfer.json`,
+`results/run_balance_10seeds.json`; LABBOOK entries 2026-11-05 and 2026-11-06.
+
+## 4. What the drop is NOT (closed candidates)
+
+Each line was a test with its own control, pre-registered unless its entry says otherwise; the LABBOOK entry has
+the rule and the numbers.
+
+| candidate | how it was tested | verdict |
+|---|---|---|
+| a lucky random split | 10 fold seeds, raw and within-sample | no: gap > 0.06 in every seed, both models |
+| LightGBM's own randomness | 10 model seeds, raw and within-sample, paired | no: moves LightGBM's level, not the sign of the gap or the 6-point give-back |
+| 7 re-run arrays of GSE63990 | removed; re-run (`results/dedup_sensitivity_raw.csv`) | no: removing them made the gap slightly larger |
+| chip family (Affymetrix vs Illumina) | 20 single-cohort transfer pairs + size-matched control | no: same-family pairs transfer worse |
+| class weighting | leave-one-cohort-out with weighting off, 10 LightGBM seeds | no: moves the mean by < 0.01 for both models |
+| a whole-cohort normalisation "fix" | synthetic positive controls | the fix is the leak: it reads the test set; not quoted |
+| sample type (PBMC vs whole blood) | GSE6269 is the only PBMC cohort; the 4 whole-blood cohorts re-run without it, same 12,040 genes (`results/whole_blood_check.csv`) | logistic: no detectable effect (held-out mean 0.857 vs 0.866, gap 0.081 vs 0.076); LightGBM: no verdict, see below |
+| age group | GEO fields + paper tables for GSE63990 | cannot be tested with these cohorts |
+| a bug in our pipeline | 3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
+
+The sample-type row carries a limit and a side finding. The limit: GSE6269 is
+also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort
+"PBMC" cannot be separated from "that one cohort". The side finding, LightGBM
+only: without GSE6269 in the training set the tree model becomes anti-predictive
+on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over 3
+seeds, from 0.84 with it); the other three whole-blood cohorts barely move.
+Read as training-set composition, not as sample type.
+
+### Where the cause could still hide
+
+Checked against the per-sample fields in the cached GEO series matrices (08.11.2026).
+
+| group | candidate | status |
+|---|---|---|
+| tested, ruled out | lucky split · chip family · class weighting · the 7 re-run arrays · sample type (logistic) | see the table above |
+| checkable from GEO metadata, not yet tested | blood tube: PAXgene (GSE42026, GSE63990) vs Tempus (GSE40396, GSE60244); GSE6269 is PBMC, no tube | not testable on its own: tube is confounded with cohort (each cohort used one tube type) |
+| | lab batch: GSE63990 `batch` (0/1), GSE40396 `sentrix barcode` + `hybridization date` (3 dates) | GSE63990 batch split (run 8 Nov): verdict **undecided**. Batch is fully visible in the values (batch-AUC 1.000). Train batch 0 / test batch 1: AUC 0.849 vs 0.957 for 20 size- and class-matched mixed splits, Δ 0.108, below all 20. Reverse: 0.885 vs 0.924, Δ 0.039, inside the control spread. Per-patient ranking did not close it. Power limit: the small side has 39 arrays, 12 bacterial. **Deciding test (run 8 Nov, 1000 size- and class-matched mixed-split draws): still undecided.** Train batch 0 / test batch 1: AUC 0.849, null mean 0.961, 4 of 1000 draws at or below it (0.4 %). Train batch 1 / test batch 0: AUC 0.885, null mean 0.920, 121 of 1000 at or below it (12.1 %, interval 10.2-14.3 %). So the batch costs AUC clearly in one direction only. GSE40396 hybridization dates: underpowered, not run (bacterial arrays per date 0, 0 and 8; all 8 bacterial arrays sit on one date). The drop stays unattributed |
+| | sex: in GEO for 4 of 5 (all but GSE63990) | not tested |
+| | age: in GEO for 3 of 5 (GSE40396 months, GSE60244 years, GSE6269 `Age: 10 y`); not for GSE42026, GSE63990 | the children/adults grid still fails on GSE63990 |
+| not in the public data | days since symptom onset · illness severity · ward vs ICU · how the bacterial/viral label was adjudicated (GSE6269 lists `illness` and antibiotic `treatment`, the others nothing) | cannot be tested from GEO |
+
+**What remains:** with five cohorts the drop is a *pattern*, not a *cause*. It
+stays unattributed. The batch split of the one cohort with two documented array
+batches has been run (LABBOOK 2026-11-07 PLAN onward): a
+within-hospital batch costs AUC in one direction only, so it is a partial
+candidate, not a cause.
+
+## 5. Honest limits
+
+- **Flattered by exclusions.** Co-infections and non-infectious inflammation are
+  excluded, not modelled. Several published papers do the same; it makes
+  everyone's numbers, including these, look better than an emergency department.
+- **Five cohorts, 458 arrays.** Roughly a tenth of the largest published
+  comparison. Enough to measure a gap, not enough to name its cause.
+- **Microarray only.** Nothing here is checked on RNA-seq.
+- **Labels are machine-parsed.** Published counts match for all five cohorts, but
+  only two of the five count checks were done by a human (the author); the other
+  three are AI-verified against the papers. No author of an original cohort has
+  read the label table.
+- **Which GSE63990 arrays are the re-runs is inferred**, not proven (GEO has no
+  patient ids); a correlation check supports the choice.
+- **Not a clinical failure rate.** A gap across archived cohorts is not a
+  prospective validation. The FDA-cleared TriVerity test *was* validated
+  prospectively (1,222 patients, 22 sites, Nature Medicine 2025) and its numbers
+  are not comparable to these.
+- **Within-sample ranking still needs the whole gene profile of one patient**,
+  which a 2- or 7-gene bedside assay does not have.
+
+## 6. Who did what
+
+This repo was built with an AI coding assistant (Claude Code) directed by the
+author, a molecular biologist. The honest split, from the LABBOOK record:
 
 | item | done by | judged by |
 |---|---|---|
-| Question, scope, frozen five-cohort set, every rule change (e.g. dropping afebrile children in GSE40396) | the author decided | the author |
-| Pipeline code, tests, all runs | Claude (AI), directed by the author | 3 outside AI code reviews (below); no human code review yet |
-| Published counts GSE42026 | Claude (AI), pinned 2026-10-21 to the authors' GEO design text, cross-checked with Tsalik 2016 Table 1 | **AI-verified, not human** |
-| Published counts GSE63990 | Claude (AI), 2026-10-21, Tsalik 2016 Table 1 (70 bacterial / 115 viral subjects); the 7 re-run arrays excluded by the author's decision | **AI-verified, not human**; which 7 arrays are the re-runs is inferred (see Labels) |
-| Published counts GSE60244 | two blind AI agents extracted them from the papers, Claude compared | accepted by the author 2026-10-19 |
-| Published counts GSE40396 (Hu 2013, Results first paragraph) | two blind AI agents extracted them from the paper, Claude compared | accepted by the author 2026-10-19; **checked by the author 2026-10-23: Hu 2013 counts 22 viral / 8 bacterial match** |
-| Published counts GSE6269 (Ramilo 2007, Table 1 footnote) | Claude (AI), 2026-10-20 and re-read 2026-10-21 | **checked by the author 2026-10-23: Ramilo 2007 Table 1 counts 73 bacterial / 18 viral match** |
-| The one-sentence answer | Claude drafted, the author approved | a blind fresh AI agent re-derived all 10 numbers from the CSVs (same model family) |
-| 10-seed sweep, probe-choice control | Claude, pre-registered in the LABBOOK before running | the pre-registered rules |
-| Code review | gpt-6-astra, Gemini 3.1 Pro, a blind Claude agent, same code bundle | every finding is fixed (all but one with a test that fails on the old code), rejected with a reason checked on the data, or left with its limit stated: LABBOOK 2026-10-21, `reports/review/2026-10-21/`. No reviewer found a bug that changes a number on file |
-| Prior-art sweep | Claude (AI), 2026-10-10 | not re-checked by a human |
-| v1.1 signature gene lists, signs, score rules, which cohorts each paper used | Claude (AI), 2026-10-21, from the PMC full texts and the supplements (Herberg eTables 3/6, Sweeney fig. S3 / Table S1) plus MetaIntegrator `calculateScore` (`config/signatures.json`) | **AI-verified, not human** |
-| v1.1 scores and AUCs | Claude, pre-registered in the LABBOOK | a blind fresh AI agent re-implemented both scores and matched every main number (same model family) |
+| question, scope, the frozen five-cohort set, every label-rule decision, every go/no-go | the author | the author |
+| pipeline code, tests, all runs, LABBOOK entries | the AI, directed by the author | 3 outside AI code reviews (gpt-6-astra, Gemini 3.1 Pro, a blind Claude agent); every finding fixed with a red test, rejected with a reason checked on the data, or left with its limit stated |
+| published class counts | the AI from the papers; GSE40396 and GSE6269 re-checked by the author | author for 2 of 5, AI-only for 3 of 5 |
+| every result sentence | AI drafted, author approved | a blind fresh agent re-derives the numbers from the CSVs before the sentence is accepted; pre-registered thresholds decide the verdict word |
+| reproducibility | — | the author re-ran the whole pipeline from a fresh GEO download on their own machine: all four headline AUCs identical to the last digit |
+| Sweeney score reading | the AI from paper + supplement + authors' R code | confirmed by one of the score's authors by e-mail |
 
-Open before anyone should rely on this: a human (ideally an author of one of the
-original cohorts) reading the label table and the code.
+Still open before anyone should rely on this: a human code review, and an author
+of one of the original cohorts reading the label table.
 
-### Labels
+## 7. Reproduce it
 
-| cohort | platform | bacterial | viral | excluded | check |
+```
+python -m pip install -r requirements.txt   # numpy, pandas, scikit-learn, scipy, lightgbm, requests
+python run_pipeline.py --fetch              # download the 5 GEO series into data/ (once, ~120 MB cached)
+python run_pipeline.py --review             # label candidates + published-count verification (must say verified 5/5)
+python run_pipeline.py --train              # Result 1: both schemes, writes results/ (~1.5 min on a desktop CPU)
+python run_pipeline.py --train --within-sample-normalize   # Result 2
+python run_frozen_signatures.py             # Result 3
+python run_transfer_matrix.py              # Result 4: chip family + 3-seed class weighting (~4 min)
+python run_transfer_matrix.py --balance-seeds 10           # Result 4: class weighting, 10 LightGBM seeds (~10 min)
+python tools/geo_age_check.py               # Result 4: age fields in GEO
+python run_whole_blood_check.py             # sample-type check (~4 min)
+python run_batch_split.py                   # GSE63990 batch split
+python run_batch_deciding.py                # deciding batch test, 1000 draws (~11 min)
+python run_seed_sweep.py                    # 10 fold seeds (~20 min)
+python -m pytest -q                         # 211 tests
+```
+
+CPU only; no GPU is used anywhere. `data/` is git-ignored and rebuilt by
+`--fetch`. `results/` is committed so every number above can be diffed against a
+re-run. Each run reports its own reproduction gate before writing anything new.
+
+## 8. Prior art, and the one paragraph that justifies this repo
+
+This field is mature and commercial. Know this before calling the work novel.
+
+| what exists | status |
+|---|---|
+| **Inflammatix TriVerity**, 29-gene host-response test | FDA-cleared Jan 2025; prospective validation Liesenfeld et al., Nature Medicine 2025 ([doi](https://doi.org/10.1038/s41591-025-03933-y)): 1,222 patients, 22 emergency departments; bacterial AUROC 0.83, viral 0.91 in the adjudicated population |
+| **MeMed BV**, 3-protein test | FDA-cleared |
+| **Bodkin et al. 2022**, Genome Medicine | 28 signatures, 51 datasets, 4,589 subjects. The largest comparison; see below |
+| **Chawla et al. 2022**, Cell Systems | 30 signatures vs a 17,105-profile compendium; measures robustness and cross-reactivity |
+| **MetaIntegrator** (Khatri lab) | R package with leave-one-dataset-out built in; the method is not new |
+| **bvnGPS**, 16 cohorts incl. these five | has both a held-out and a random-split mode, but as two invocations plus a scoring script, one split not CV |
+
+Bodkin et al. answers a different question. They fitted a fresh lasso logistic
+regression **inside each dataset separately** and cross-validated within it,
+stating: *"Creating dataset-specific models overcomes batch effects since each
+signature is optimized in each dataset."* Sound for their question ("how good is
+this gene list when tuned locally"), but it removes the batch effect by
+construction instead of measuring it, and the paper reports no discovery-versus-
+external drop. The second-largest benchmark measures robustness instead.
+Well-resourced groups do cross-cohort validation in primary papers, but their
+pipelines are not public.
+
+**Therefore not the contribution here:** a new signature, a better AUC, a
+clinical product, or more data. **The contribution that survives scrutiny:** a
+small, public, runnable implementation where one command computes the optimistic
+number and the cohort-held-out number from the same data, the label parsing
+checks itself against published counts, and every verdict was written down
+before the run. Say it that way.
+
+## Labels, in detail
+
+| cohort | platform | bacterial | viral | excluded | published count source |
 |---|---|---|---|---|---|
 | GSE63990 | GPL571 | 70 | 115 | 95 | Tsalik 2016 Sci Transl Med, Table 1 (AI-verified); excluded = 88 non-infectious + 7 re-run arrays |
-| GSE42026 | GPL6947 | 18 | 41 | 33 | authors' GEO design text (Herberg 2013), Tsalik 2016 Table 1 |
-| GSE60244 | GPL10558 | 22 | 71 | 65 | Suarez 2015 J Infect Dis, Methods |
-| GSE40396 | GPL10558 | 8 | 22 | 35 | Hu 2013 PNAS, Results (febrile children only; checked by the author 2026-10-23) |
+| GSE42026 | GPL6947 | 18 | 41 | 33 | authors' GEO design text (Herberg 2013), Tsalik 2016 Table 1 (AI-verified) |
+| GSE60244 | GPL10558 | 22 | 71 | 65 | Suarez 2015 J Infect Dis, Methods (AI-verified) |
+| GSE40396 | GPL10558 | 8 | 22 | 35 | Hu 2013 PNAS, Results; febrile children only (checked by the author 2026-10-23) |
 | GSE6269 | GPL96 | 73 | 18 | 6 | Ramilo 2007 Blood, Table 1 footnote (checked by the author 2026-10-23) |
 
-The pipeline refuses to train if any parse disagrees with its published counts.
+GSE63990 holds 280 arrays of 273 patients in two batches sharing 7 re-run
+samples; the last 7 arrays carry exactly the surplus over the published counts
+and are excluded (`config/cohorts.json`, guarded by a test). Exclusion rules run
+before class rules, so "bacterial and viral co-infection" never becomes
+"bacterial".
 
-**GSE63990 re-run arrays (found 2026-10-21).** GEO holds 280 arrays of 273
-patients: two batches share 7 re-run samples. The last 7 arrays (sample_274-280,
-GSM1562133-GSM1562139) carry exactly the surplus over the published counts
-(3 bacterial, 2 viral, 2 non-infectious), so they are excluded as the re-runs
-(`config/cohorts.json` `exclude_samples`; a test fails if they come back). Which
-arrays are the re-runs is **inferred, not proven**: GEO has no patient ids, and a
-cross-batch correlation check supports the choice without pinning it.
-
-### Prior art (checked 2026-10-10, deepened the same day; bvnGPS row corrected 2026-10-30)
-
-This field is mature and commercial. Know this before telling anyone the work is novel.
-
-| What exists | Status |
-|---|---|
-| **Inflammatix TriVerity** — 29-gene ML host-response test, bacterial + viral + severity scores | **FDA-cleared Jan 2025**, 1,222 patients across 22 sites, CMS add-on payment for FY2026 |
-| **MeMed BV** — 3-protein host-response test (TRAIL, IP-10, CRP) | FDA-cleared |
-| **Bodkin et al. 2022**, *Genome Medicine* — the big systematic comparison | **28 signatures, 51 datasets, 4,589 subjects.** See the note below: it deliberately does not measure cross-cohort transfer. Code ships only as a supplementary Python file, no repository, no stated licence |
-| **Chawla et al. 2022**, *Cell Systems* — benchmarking framework | 30 signatures against a 17,105-profile compendium. Measures **robustness and cross-reactivity**, including signatures firing falsely on ageing. Finds the two are conflicting objectives |
-| **MetaIntegrator** (Khatri lab, Stanford) | R package with leave-one-dataset-out built in, so the *method* is packaged. Reportedly removed from CRAN on 2024-10-14 |
-| **bvnGPS** (`github.com/Ritchiegit/bvnGPS`) | Gene-pair signatures over 2,680 samples from 16 cohorts, including the five used here, with **both** a held-out-cohort and a random-split mode; understated in the 2026-10-10 check. Not the same measurement: two invocations plus a separate scoring script, one split rather than CV, probably not runnable as shipped |
-| `rmaghembe1/host-response-module-transportability` | Nearest-sounding public repo. Scores **fixed, locked modules** across cohorts; its README says it "is not a diagnostic classifier-discovery study". No held-out-cohort training scheme, 0 stars, runnability unverified |
-
-**TriVerity validation (Liesenfeld et al., *Nature Medicine* 2025, [doi:10.1038/s41591-025-03933-y](https://doi.org/10.1038/s41591-025-03933-y)).** SEPSIS-SHIELD, a prospective non-interventional study, enrolled 1,441 adults with suspected infection in 22 emergency departments (21 in the United States, 1 in Europe); 1,222 had valid TriVerity results and 729 of those had a consensus-adjudicated infection status, the main analysis population. In that population the Bacterial score reached an AUROC of 0.83 and the Viral score 0.91; the Severity score (mechanical ventilation, vasopressors or renal replacement within 7 days; 1,120 evaluable) reached 0.78, and with forced adjudication of all 1,222 patients the bacterial and viral AUROCs fall to 0.76 and 0.83. That is a prospective, multi-site validation of one locked, FDA-cleared assay against clinical adjudication, whereas this study is a retrospective reproduction on public cohorts comparing random cross-validation with leave-one-cohort-out; the numbers are not comparable and we make no claim that they are.
-
-#### The one paragraph that justifies this repo
-
-Bodkin et al. is the most thorough comparison in the field, and it answers a
-different question than the one asked here. They did not apply one model across
-cohorts. They **fitted a fresh lasso logistic regression inside each dataset
-separately**, and estimated performance with nested leave-one-out
-cross-validation *within* that dataset. Their stated reason, quoted from the
-paper: *"Creating dataset-specific models overcomes batch effects since each
-signature is optimized in each dataset."*
-
-That is a sound choice for their question, which was "how good is this gene list
-when it is tuned locally". It also means the batch effect was removed by
-construction rather than measured, and the paper does not report a
-discovery-versus-external drop at all.
-
-So the gap this repo measures is not reported by the largest comparison in the
-field, and the second-largest benchmark measures robustness and cross-reactivity
-instead. Cross-cohort validation does happen in primary papers from
-well-resourced groups, for example the 29-mRNA classifier trained across 18
-studies, but their pipelines are not public.
-
-**Therefore NOT the contribution here:** a new signature, a better AUC, a
-clinical product, or more data than anyone else. Five cohorts and 458 samples is
-roughly a tenth of Bodkin's scale.
-
-**The contribution that survives scrutiny:** a small, public, runnable
-implementation where one command computes the optimistic number and the
-cohort-held-out number from the same data, and the label parsing checks itself
-against published counts. An engineering and reproducibility contribution, not a
-scientific-novelty one. Say it that way.
-
-## License
-
-MIT, see [LICENSE](LICENSE).
+See `LABBOOK.md` for what was run and measured, in date order, with every
+pre-registered rule next to its result.

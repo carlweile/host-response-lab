@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-08",
+  "pbmc_cohort_removed": "GSE6269",
+  "gate0_max_abs_diff": 1.1102230246251565e-16,
+  "n_samples": 367,
+  "n_genes_fixed": 12040,
+  "summary_4cohort_fixed_genes": [
+    {
+      "model": "lightgbm",
+      "scheme": "leave_one_cohort_out",
+      "mean_auc": 0.71071411353712,
+      "min_auc": 0.21590909090909088,
+      "max_auc": 0.9078590785907859,
+      "folds": 4,
+      "gap": 0.2116112339931966
+    },
+    {
+      "model": "lightgbm",
+      "scheme": "random_cv",
+      "mean_auc": 0.9223253475303166,
+      "min_auc": 0.9026086956521739,
+      "max_auc": 0.9417391304347826,
+      "folds": 5,
+      "gap": 0.2116112339931966
+    },
+    {
+      "model": "logistic_l2",
+      "scheme": "leave_one_cohort_out",
+      "mean_auc": 0.8565977086341652,
+      "min_auc": 0.8194622279129322,
+      "max_auc": 0.9142857142857143,
+      "folds": 4,
+      "gap": 0.08132110236849677
+    },
+    {
+      "model": "logistic_l2",
+      "scheme": "random_cv",
+      "mean_auc": 0.937918811002662,
+      "min_auc": 0.93,
+      "max_auc": 0.9425,
+      "folds": 5,
+      "gap": 0.08132110236849677
+    }
+  ],
+  "comparison": {
+    "logistic_l2": {
+      "loco_5cohort_run_same4_heldout": 0.866279745484486,
+      "loco_4cohort_run": 0.8565977086341651,
+      "delta_train": -0.009682036850320985
+    },
+    "lightgbm": {
+      "loco_5cohort_run_same4_heldout": 0.858195246721069,
+      "loco_4cohort_run": 0.71071411353712,
+      "delta_train": -0.14748113318394895
+    },
+    "lightgbm_loco_by_seed": {
+      "0": 0.71071411353712,
+      "1": 0.7645231788451285,
+      "2": 0.7395392323385561
+    },
+    "natural_intersection_genes": 12040,
+    "natural_logistic_loco_mean": 0.8565977086341651
+  },
+  "notes_natural": [
+    "shared gene symbols across 4 cohorts: 12040",
+    "imputed cells (cohort gene mean, else 0.0): 0"
+  ]
+}

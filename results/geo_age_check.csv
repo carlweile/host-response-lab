@@ -1,0 +1,6 @@
+cohort,pinned_age_group,n_samples,n_with_age,n_unparseable,min,median,max,n_lt16,n_lt18,n_ge18,n_lt21,keys_seen
+GSE63990,mixed,280,0,0,,,,,,,,
+GSE42026,children,92,0,0,,,,,,,,
+GSE40396,children,65,65,0,0.16666666666666666,0.9166666666666666,2.75,65,65,0,65,age (month)
+GSE6269,children,97,97,0,0.041666666666666664,0.9166666666666666,36.0,92,94,3,95,Age
+GSE60244,adults,158,158,0,23.0,60.5,92.0,0,0,158,0,age
