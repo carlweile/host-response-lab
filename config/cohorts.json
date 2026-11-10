@@ -51,7 +51,7 @@
       "accession": "GSE6269",
       "platform_family": "affymetrix",
       "age_group": "children",
-      "age_source": "Ramilo 2007, PMID 17105821, abstract: 'pediatric patients with acute infections'",
+      "age_source": "Ramilo 2007, PMID 17105821, abstract: 'pediatric patients with acute infections'. Cohort-level tag only: 88 of the 91 labelled GPL96 arrays are under 18; 3 are adults (GSM173201 S. aureus 18 y, GSM173221 influenza A 24 y, GSM173268 influenza A 36 y), per GEO 'Age' and the paper's Table 1 footnote ranges (S. aureus up to 18 y, influenza A up to 36 y); checked 2026-11-09",
       "note": "Ramilo et al., paediatric acute infection, influenza vs bacterial pathogens. Run on three array platforms; we take GPL96 only, because the variants are the same patients and would otherwise be treated as independent cohorts.",
       "prefer_platform": "GPL96",
       "expected_counts": {"viral": 18, "bacterial": 73},
