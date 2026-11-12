@@ -96,7 +96,7 @@ a{color:var(--accent)}
 <tr><td>GSE42026</td><td>Herberg 2013</td><td>Illumina</td><td>children</td><td class="num">18</td><td class="num">41</td></tr>
 <tr><td>GSE60244</td><td>Suarez 2015</td><td>Illumina</td><td>adults</td><td class="num">22</td><td class="num">71</td></tr>
 <tr><td>GSE40396</td><td>Hu 2013</td><td>Illumina</td><td>children</td><td class="num">8</td><td class="num">22</td></tr>
-<tr><td>GSE6269</td><td>Ramilo 2007</td><td>Affymetrix</td><td>children</td><td class="num">73</td><td class="num">18</td></tr>
+<tr><td>GSE6269</td><td>Ramilo 2007</td><td>Affymetrix</td><td>mostly children (3 of 91 aged 18–36)</td><td class="num">73</td><td class="num">18</td></tr>
 </tbody></table></div>
 <p>Two models, an L2 logistic regression and a LightGBM gradient-boosted tree, both class-weighted, no gene selection anywhere, are trained and scored two ways on exactly the same matrix:</p>
 <ul>
@@ -213,7 +213,7 @@ a{color:var(--accent)}
 <tr><td>age group</td><td>GEO fields + paper tables for GSE63990</td><td><span class="verdict open">cannot be tested</span> with these cohorts</td></tr>
 <tr><td>a bug in our pipeline</td><td>3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs</td><td><span class="verdict">none found</span> that changes a committed number</td></tr>
 </tbody></table></div>
-<p>The sample-type row carries a limit and a side finding. The limit: GSE6269 is also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort "PBMC" cannot be separated from "that one cohort". The side finding, LightGBM only: without GSE6269 in the training set the tree model becomes anti-predictive on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over three seeds, from 0.84 with it); the other three whole-blood cohorts barely move. Read it as training-set composition, not as sample type.</p>
+<p>The sample-type row carries a limit and a side finding. The limit: GSE6269 is also the mostly pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort "PBMC" cannot be separated from "that one cohort". The side finding, LightGBM only: without GSE6269 in the training set the tree model becomes anti-predictive on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over three seeds, from 0.84 with it); the other three whole-blood cohorts barely move. Read it as training-set composition, not as sample type.</p>
 <h3>Where the cause could still hide</h3>
 <p class="small">Checked against the per-sample fields in the cached GEO series matrices, 8 November 2026.</p>
 <div class="tw"><table>

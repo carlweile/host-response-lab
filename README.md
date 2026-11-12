@@ -45,7 +45,7 @@ patient arrays, 12,040 genes shared by every chip.**
 | GSE42026 | Herberg 2013 | Illumina | children | 18 | 41 |
 | GSE60244 | Suarez 2015 | Illumina | adults | 22 | 71 |
 | GSE40396 | Hu 2013 | Illumina | children | 8 | 22 |
-| GSE6269 | Ramilo 2007 | Affymetrix | children | 73 | 18 |
+| GSE6269 | Ramilo 2007 | Affymetrix | mostly children (3 of 91 aged 18–36) | 73 | 18 |
 
 The same two models (an L2 logistic regression and a LightGBM gradient-boosted
 tree, both class-weighted, no gene selection anywhere) are trained and scored
@@ -199,7 +199,7 @@ the rule and the numbers.
 | a bug in our pipeline | 3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
 
 The sample-type row carries a limit and a side finding. The limit: GSE6269 is
-also the pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort
+also the mostly pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort
 "PBMC" cannot be separated from "that one cohort". The side finding, LightGBM
 only: without GSE6269 in the training set the tree model becomes anti-predictive
 on the other young-children cohort, GSE40396 (held-out AUC 0.22 to 0.48 over 3

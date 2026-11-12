@@ -1949,3 +1949,17 @@ Process only. The deciding batch test (above) and a docs update were merged into
 **In plain terms.** The public edition of a lab notebook gets its new chapters: names blacked out, every number checked against the raw tables, printed only after a proofread.
 
 **Where.** This copy: README.md, LABBOOK.md, `reports/2026-11-08-writeup.html`, `results/`, `src/`, `tests/`, `tools/`.
+
+## 2026-11-10 — GSE6269 age tag checked (wording only, no number changes)
+
+**Question.** GSE6269 is tagged "children", but the blind read of the last carry-over saw 3 arrays with a GEO age of 18 or more. Is the tag wrong, and does any reported number move?
+
+**Measured.** GPL96 series matrix, 97 arrays (91 labelled + 6 healthy). 88 of the 91 labelled arrays are under 18; 3 are adults: GSM173201 (S. aureus, 18 y), GSM173221 (influenza A, 24 y), GSM173268 (influenza A, 36 y). The paper agrees independently: Ramilo 2007 (PMC1801073) Table 1 footnote gives S. aureus 3 months to 18 years and influenza A 3 weeks to 36 years, and its patient table lists one influenza patient at 36 y.
+
+**Effect on numbers: none.** The age tag feeds only the age test of the transfer matrix, which was already "not testable" (GSE63990 has no ages). Every AUC uses the class labels, not age.
+
+**Claim-check.** Claim: "children" is imprecise for GSE6269 (3 of 91 adults); no reported number changes. Rival: a GEO data-entry error, ruled out by the paper's own table. Judge: the paper; otherwise self-assessed. "Children" is the paper's own cohort-level word ("pediatric patients"), so the tag is called imprecise, not wrong.
+
+**Changed.** README and `reports/2026-11-08-writeup.html`: GSE6269 age group "mostly children (3 of 91 aged 18–36)" and "the mostly pediatric … cohort"; `config/cohorts.json` `age_source` note lists the 3 sample ids (no value read by code changed). Tests: 211 passed.
+
+**Belief.** Unchanged.
