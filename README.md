@@ -69,7 +69,7 @@ is easy to rig by accident:
    change them. Exceptions are disclosed in the entry concerned. The
    pre-registration commits live in the private working repo, so their timing
    cannot be checked from this repository's history.
-3. **Tests go red on broken code.** Each of the 211 tests constructs the bug it
+3. **Tests go red on broken code.** Each of the 253 tests constructs the bug it
    guards against (a co-infection parsed as "bacterial", a test cohort leaking
    into training, a transform that reads other patients) and asserts the guard
    fires.
@@ -181,6 +181,30 @@ Sources: `results/transfer_matrix.csv`, `results/transfer_sizematched.csv`,
 `results/balance_control_10seeds.csv`, `results/run_transfer.json`,
 `results/run_balance_10seeds.json`; LABBOOK entries 2026-11-05 and 2026-11-06.
 
+### Two checks on the random-CV headline itself (12 and 13 Nov)
+
+Could the 0.957 random-CV number be a pipeline bug, or the model guessing the
+hospital? Both checks were pre-registered; LABBOOK entries 2026-11-12 and 2026-11-13.
+
+- **Label shuffle** (`run_label_null.py`, 50 shuffles each, logistic, fold seed 0).
+  Labels shuffled over all arrays: mean AUC 0.502 (max 0.574), so no label leak
+  shows up (**clean**). Labels shuffled only inside each hospital: mean 0.668,
+  close to the 0.700 that knowing only the hospital can reach. That is a
+  ceiling for a hospital shortcut, not its share of the headline.
+- **Same-hospital pairs** (`run_shortcut_pairs.py`, 10 fold seeds). AUC counts
+  (bacterial, viral) pairs. Pairs from the same hospital cannot be ranked by
+  knowing the hospital. Logistic: all pairs 0.956, same-hospital pairs 0.955,
+  difference D = +0.0014 (patient bootstrap −0.008 to +0.013); LightGBM
+  +0.0038. Pre-registered verdict: **not used** (D ≤ 0.01). A planted hospital
+  offset moves D by 0.024 while the same-hospital AUC does not move, so the
+  metric can see one; but the best possible hospital-only offset adds at most
+  about 0.003 to a model already at 0.957, so read it as "no sign of a
+  shortcut, and little room for one".
+
+Both schemes, same run: random-CV 0.957, leave-one-cohort-out 0.881. The
+headline does not come from knowing the hospital; the 0.076 gap to a new
+hospital still stands and is the result.
+
 ## 4. What the drop is NOT (closed candidates)
 
 Each line was a test with its own control, pre-registered unless its entry says otherwise; the LABBOOK entry has
@@ -196,7 +220,7 @@ the rule and the numbers.
 | a whole-cohort normalisation "fix" | synthetic positive controls | the fix is the leak: it reads the test set; not quoted |
 | sample type (PBMC vs whole blood) | GSE6269 is the only PBMC cohort; the 4 whole-blood cohorts re-run without it, same 12,040 genes (`results/whole_blood_check.csv`) | logistic: no detectable effect (held-out mean 0.857 vs 0.866, gap 0.081 vs 0.076); LightGBM: no verdict, see below |
 | age group | GEO fields + paper tables for GSE63990 | cannot be tested with these cohorts |
-| a bug in our pipeline | 3 AI code reviews (two by other vendors' models), 211 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
+| a bug in our pipeline | 3 AI code reviews (two by other vendors' models), 253 red-on-bug tests, 4 identical end-to-end re-runs incl. one by the author from a fresh GEO download | no reviewer found a bug that changes a committed number |
 
 The sample-type row carries a limit and a side finding. The limit: GSE6269 is
 also the mostly pediatric, 80 %-bacterial, Affymetrix cohort, so with one PBMC cohort
@@ -279,7 +303,9 @@ python run_whole_blood_check.py             # sample-type check (~4 min)
 python run_batch_split.py                   # GSE63990 batch split
 python run_batch_deciding.py                # deciding batch test, 1000 draws (~11 min)
 python run_seed_sweep.py                    # 10 fold seeds (~20 min)
-python -m pytest -q                         # 211 tests
+python run_label_null.py                    # label-shuffle null, 2 x 50 shuffles
+python run_shortcut_pairs.py                # same-hospital pairs vs all pairs, 10 seeds
+python -m pytest -q                         # 253 tests
 ```
 
 CPU only; no GPU is used anywhere. `data/` is git-ignored and rebuilt by
@@ -308,6 +334,8 @@ construction instead of measuring it, and the paper reports no discovery-versus-
 external drop. The second-largest benchmark measures robustness instead.
 Well-resourced groups do cross-cohort validation in primary papers, but their
 pipelines are not public.
+
+**Side by side (`results/bodkin_table2_comparison.csv`).** All five of our series are in Bodkin's Table S9, which gives per-dataset median and IQR across their signatures (per-dataset lasso refits, wider negative class incl. healthy/SIRS; Table 2 itself is per signature). Our random-CV AUC per cohort (0.89-0.99) is above Bodkin's Q3 for all five (by 0.03-0.11), our leave-one-cohort-out AUC (0.83-0.94) is nearer their range; outcome by the pre-registered rule: **NOT-COMPARABLE** (GSE40396 sits only 0.027 over Q3, under the 0.03 line), nothing claimed. Both schemes are in the CSV.
 
 **Therefore not the contribution here:** a new signature, a better AUC, a
 clinical product, or more data. **The contribution that survives scrutiny:** a
