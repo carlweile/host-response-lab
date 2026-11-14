@@ -1963,3 +1963,179 @@ Process only. The deciding batch test (above) and a docs update were merged into
 **Changed.** README and `reports/2026-11-08-writeup.html`: GSE6269 age group "mostly children (3 of 91 aged 18–36)" and "the mostly pediatric … cohort"; `config/cohorts.json` `age_source` note lists the 3 sample ids (no value read by code changed). Tests: 211 passed.
 
 **Belief.** Unchanged.
+
+## 2026-11-10 — PLAN, pre-registered before any read: Bodkin 2022 side-by-side
+
+**Question.** Is our random-CV AUC per cohort in line with what the largest published comparison (Bodkin et al. 2022, Genome Medicine, 28 signatures, 51 datasets) measured on the same GEO series? This is the last open CORE s7 "MAY propose" item. Literature only: no run, no GPU, EUR 0. Committed BEFORE the supplement is opened for any number of our five series.
+
+**Why Table 2 is not used.** Table 2 is one row per signature (weighted mean AUC, sens/spec/DOR), no dataset column. Per-dataset numbers are in Additional file 6 = Table S9 (XLSX): median AUC and IQR (Q1-Q3) across the signatures, per dataset and per task. Min and max are not published as numbers (box plots in Fig S3 only, no GSE labels), so the original "above max / inside min-max" rule cannot be applied. This replacement (the author's approved option A) is recorded openly.
+
+**Same series** = GEO accession match only. GSE6269 counts as "in Bodkin" if either of its two Bodkin rows is present; row `-2` (GPL96, our platform) is the one the rule uses.
+
+**Our number** per series = `rcv_auc_in_cohort` (random-CV predictions of the pooled model scored inside each cohort) from `results/gapdiag_cohorts.csv` (transform=raw, model=logistic_l2), with `loco_auc` beside it. Sensitivity lines, never the verdict: the pooled headline random-CV mean AUC (0.957, `summary_raw.csv`) and Bodkin's viral-vs-non-viral task.
+
+**Task column.** Bodkin's bacterial vs non-bacterial (positive class = bacterial, like ours). Viral vs non-viral is copied as a sensitivity line only.
+
+**Rule (A, verbatim).** n = number of our 5 series found in Table S9. If n < 3 -> NOT-COMPARABLE. OPTIMISTIC-FLAG if our random-CV AUC is above Bodkin's Q3 by more than 0.03 for EVERY overlapping series. CONSISTENT if it sits inside [Q1, Q3] for MORE THAN HALF of the overlapping series (3 of 5 when n = 5). Anything else (including values below Q1) -> NOT-COMPARABLE, reported per series, nothing claimed. If the primary and the sensitivity readings give different outcome words, the RESULT says so and claims no more than the weaker word.
+
+**Known weakening, stated up front.** Bodkin's negative class includes healthy / SIRS subjects (ours is bacterial vs viral only); their models are per-dataset lasso refits with nested leave-one-out; they use 29 signatures (28 plus one composite); Q3 is lower than the max, so the flag is easier to trigger than the card intended.
+
+**Kill outcome.** OPTIMISTIC-FLAG = recommend (not start) a pipeline check before further outside use (CORE s3 kill 1, "the measurement was a bug").
+
+**Judge not us.** The published table, plus a blind subagent re-read of every copied cell (gets the bodkin_* columns and the xlsx URL, not our numbers, the rule or the verdict).
+
+## 2026-11-10 — RESULT: Bodkin 2022 side-by-side = NOT-COMPARABLE (PLAN commit `b11104b`)
+
+**Question (recap).** Is our random-CV AUC per cohort in line with what Bodkin et al. 2022 measured on the same GEO series? Rule A was written in the PLAN commit before any number was read; it was not edited.
+
+**Download log.** PMC8858657 Additional file 6 (Table S9), 18,337 bytes, sheet `Table S9` 76x19, downloaded 10.11.2026 by the author by hand into `data/papers/bodkin_s9.xlsx` (git-ignored), sha256 `3cfd0eaee695dfb81dc01324746114063d9fa5249345c105de076fac1aa12da2`.
+
+**Design.** All 5 series are in Table S9 (GSE6269 via row -2, GPL96; row -1 listed only in the note, not used). Bodkin publishes median and IQR across signatures per dataset, not min/max. Their design: per-dataset lasso refits, nested leave-one-out, negative class includes healthy/SIRS, ours is bacterial vs viral only.
+
+**Measured** (bacterial task; ours = raw logistic_l2 `rcv_auc_in_cohort` / `loco_auc` from `gapdiag_cohorts.csv`):
+
+| series | Table S9 row | Bodkin median [Q1-Q3] | ours random-CV | random-CV minus Q3 | ours held-out (LOCO) |
+|---|---|---|---|---|---|
+| GSE63990 | 40 | 0.899 [0.844-0.909] | 0.959 | +0.050 | 0.926 |
+| GSE42026 | 33 | 0.780 [0.650-0.837] | 0.893 | +0.056 | 0.832 |
+| GSE60244 | 35 | 0.762 [0.682-0.793] | 0.894 | +0.101 | 0.843 |
+| GSE40396 | 31 | 0.868 [0.820-0.910] | 0.938 | +0.027 | 0.864 |
+| GSE6269 | 39 | 0.845 [0.818-0.876] | 0.988 | +0.112 | 0.938 |
+
+**Rule applied mechanically.** Primary: n=5; flag needs every series above Q3 by more than 0.03, but GSE40396 is +0.027; none sits inside [Q1,Q3] -> **NOT-COMPARABLE**. Sensitivities: viral-vs-non-viral columns -> NOT-COMPARABLE; held-out AUC vs the bacterial Q3 -> NOT-COMPARABLE; the pooled headline 0.957 against each series' Q3 -> OPTIMISTIC-FLAG (by +0.047 to +0.164). Readings disagree, so per the PLAN the claim is no stronger than the weaker word: NOT-COMPARABLE. The primary margin for GSE40396 is 0.003 under the line; no rule change made.
+
+**Claim-check.** Claim: our optimistic number is not an artefact of our pipeline. Measured: nothing supports that claim; ours sits above Bodkin's upper quartile for all five series, but their numbers come from a different design (rival: not comparable), so no verdict either way. Judge not us: published Table S9 plus two independent re-reads of every copied cell (blind subagent: all cells match; own accession-keyed lookup: all match). Outcome word: NOT-COMPARABLE.
+
+**Belief.** Unchanged. Recommendation only (not started): the consistent direction (ours higher in random-CV for 5 of 5) does not prove a bug, since Bodkin's lasso signatures are not tuned for our narrower task; if the author wants more, the pipeline check of CORE s3 kill 1 is the next task, not part of this one.
+
+**Where.** `results/bodkin_table2_comparison.csv`, README section 8, `tests/test_bodkin_comparison.py`; suite 213 passed (211 + 2 new).
+
+## 2026-11-12 — PLAN, pre-registered before any code: label-shuffle null of the raw random-CV headline
+
+**Question.** Does the pooled random-CV number (logistic_l2, raw, 458 arrays x 12,040 genes, fold seed 0) contain something that is not biology? Two nulls, 50 shuffles each (seeds 0-49), through the same code path as the headline (`splits.random_splits`, `train._fit_score`, `make_models()["logistic_l2"]`): (1) GLOBAL shuffle of bacterial/viral over all 458 arrays; (2) WITHIN-COHORT shuffle (labels permuted only inside each cohort, so each cohort keeps its class mix). CPU only, EUR 0. This check is not on the CORE s7 list; the author approved it as a one-off item on 12.11. No CORE edit.
+
+**Why.** The Bodkin side-by-side (10.11.) ended NOT-COMPARABLE; our random-CV AUC sat above Bodkin's Q3 for 5 of 5 series. The RESULT named this pipeline check as the next task.
+
+**Reading rule (verbatim from the task, thresholds unchanged).**
+- LEAK: global-shuffle mean AUC > 0.55, or any single shuffle > 0.65. Then the headline is not quoted anywhere until the cause is found (CORE s3 kill 1, "the measurement was a bug").
+- CLEAN: global mean within 0.45-0.55 and no single shuffle > 0.65.
+- SHORTCUT SIZE (reported, not a kill): within-cohort mean AUC as a number; SMALL if < 0.60, LARGE if >= 0.70, else MEDIUM.
+
+**Three gaps closed here, no threshold changed.** (a) One shuffle's AUC = the mean of its 5 fold AUCs (same definition as `summary_raw.csv`); p95 = numpy linear 95th percentile over the 50. (b) A global mean below 0.45 (with no shuffle above 0.65) is neither LEAK nor CLEAN: word ODD-LOW, no leak claim, report and stop. CLEAN includes 0.45 and 0.55. (c) The RESULT quotes the on-file logistic held-out AUC (0.8807) beside the random-CV null (CLAUDE.md rule 4); no held-out null is run.
+
+**Planning-probe facts (read-only, before this entry).** Logistic random-CV at fold seed 0 = 0.9566006614665998 in 3.7 s vs 0.9566006614666 on file (diff 2e-16), so Gate 0 at 1e-12 should pass. Class mix (viral/bacterial): GSE63990 115/70, GSE42026 41/18, GSE60244 71/22, GSE40396 22/8, GSE6269 18/73. A score that knows only the cohort already reaches AUC 0.7004 on these labels (labels only, no model); this is the same for every within-cohort shuffle. So LARGE (>= 0.70) is reachable only if the model recovers nearly all of the cohort-only shortcut. Printed as a reference line, not a rule.
+
+**Gate 0.** With labels unshuffled, logistic random-CV and held-out reproduce `results/summary_raw.csv` to 1e-12, else exit 1 before any shuffle, no output files.
+
+**Claim-check.** Claim: the random-CV headline reflects host-response signal, not a pipeline leak or cohort shortcut. Measured: random-CV AUC under both shuffles, 50 seeds each, same code path. Rival 1 (label leak via preprocessing): control = global shuffle. Rival 2 (cohort identity + class mix): control = within-cohort shuffle. Judge not us: a fresh sub-agent recomputes verdict words from the CSV. Limit: shuffling is per array, so it cannot see a same-patient-twice leak (the 7 known GSE63990 re-runs are excluded; others would be unknown).
+
+**Outputs.** `results/label_null_raw.csv` (100 rows), `results/run_label_null.json`. Run on a worker branch.
+
+## 2026-11-12 — RESULT: label-shuffle null of the raw random-CV headline = CLEAN, cohort shortcut MEDIUM (PLAN commit `81252f2`)
+
+**Question.** Does the pooled random-CV AUC (logistic_l2, raw, 458 arrays x 12,040 genes, fold seed 0) contain something that is not biology? Rival 1: a label leak through the pipeline. Rival 2: cohort identity plus per-cohort class mix.
+
+**Design.** Same code path as the headline. Gate 0 first: unshuffled random-CV differs from `summary_raw.csv` by 2.2e-16 and held-out by 0.0 (limit 1e-12): passed. Then 50 shuffles (seeds 0-49) per null, folds re-stratified on the shuffled labels. One shuffle's AUC = mean of its 5 fold AUCs. Reading rule: the PLAN entry above, unchanged.
+
+**Measured** (`results/label_null_raw.csv`, 100 rows; `results/run_label_null.json`):
+
+| null | mean | p95 | max | min | sd |
+|---|---|---|---|---|---|
+| global shuffle | 0.502 | 0.543 | 0.574 | 0.428 | 0.031 |
+| within-cohort shuffle | 0.668 | 0.699 | 0.701 | 0.632 | 0.020 |
+
+Reference line (labels only, no model): a score that knows only each array's cohort reaches AUC 0.7004. Both-schemes line (CLAUDE.md rule 4): headline random-CV 0.957 and on-file logistic held-out (leave-one-cohort-out) 0.881.
+
+**Verdict by the pre-registered rule.** Global mean 0.502 is inside 0.45-0.55 and no global shuffle is above 0.65 (max 0.574): **CLEAN**. Within-cohort mean 0.668 (not < 0.60, not >= 0.70): **MEDIUM**. In plain words: with the labels scrambled over all arrays the model scores like a coin flip, so no label leak shows up. With labels scrambled only inside each hospital, the model still scores 0.668, because each hospital has its own mix of viral and bacterial; that is about 95 % of the most a cohort-only score could get (0.700). So a real part of the 0.957 headline can come from knowing the hospital, not from the host response. This matches the direction of the held-out gap (0.957 vs 0.881).
+
+**Claim-check.** Claim: the headline is not a pipeline label leak. Supported only for the label-leak route the global shuffle can see. Rival 2 is NOT ruled out; it is measured (MEDIUM), and the null does not say how much of 0.957 is shortcut, only how much a shortcut alone can reach (about 0.67). Judge not us: a fresh sub-agent given only the CSV and the rule recomputed every number and both words: all MATCH (it also noted 40 of 50 within-cohort shuffles are above 0.65; the 0.65 cap applies to the global null only). Limits: shuffle is per array, so a same-patient-twice leak is invisible (the 7 known GSE63990 re-runs are already excluded); one fold seed (0), one model, random-CV only; no held-out null run.
+
+**Belief.** The headline random-CV number is not a label-leak bug, so it may stay quoted under CLAUDE.md:5-7. Cohort shortcut is a real, medium-size contributor and stays part of the gap story. CORE unchanged.
+
+**Disclosures.** `commit` in the JSON reads `81252f2-dirty`: the run started before the code was committed (the same files were committed right after as `6c98d2f`, unchanged). No run was repeated or patched by hand. The matrix was cached in the job tmp folder (not in the repo). Tests: red-first checked by breaking the code three ways (no-op shuffle, shuffle crossing cohorts, Gate 0 bypassed); suite 234 passed (215 + 19 new).
+
+**Where.** `src/label_null.py`, `run_label_null.py`, `tests/test_label_null.py`, `results/label_null_raw.csv`, `results/run_label_null.json`.
+
+## 2026-11-13 — PLAN, pre-registered before any code: does the headline lean on the cohort shortcut? within-cohort-pair AUC vs pooled
+
+**Question.** The 12.11. label-shuffle null said the within-cohort shuffle reaches 0.668 (cohort-only ceiling 0.700): "a real part of the 0.957 headline can come from knowing the hospital". The audit table (row 14) said the opposite way: within-cohort-pair AUC about equal to pooled. The two were never put side by side. A pair of patients from the SAME cohort cannot be told apart by knowing the cohort, so if the within-pair AUC equals the pooled AUC, the headline does not lean on the shortcut; the null showed only how far a shortcut COULD reach. Raw random-CV, 458 arrays, 5 folds, fold seeds 0-9, logistic_l2 and LightGBM. CPU only, EUR 0, no network. Not on the CORE s7 list; the author approved it as a one-off (13.11., option B: both extras below).
+
+**Reading rule (verbatim from the task, thresholds unchanged).**
+- NOT-USED: mean over 10 seeds of (pooled minus within-pair) is <= 0.01 for logistic_l2. Then the 12.11. belief sentence is corrected: "a cohort shortcut could reach about 0.67, but the model's ranking inside each cohort is as good as its pooled ranking, so the headline does not lean on it".
+- USED: mean (pooled minus within-pair) >= 0.02 for logistic_l2. Then the 12.11. sentence stands, now with a size.
+- In between: UNCLEAR, both numbers reported, sentence softened to "not shown either way".
+- LightGBM is reported beside it, direction only (no band word).
+
+**Expected numbers (today's file, NOT row 14).** Row 14 (logistic 0.954 within / 0.953 pooled, LightGBM 0.951 / 0.954) comes from the old 463-array `gapdiag_folds.csv`; master has carried the 458-array re-run since 21.10. Read-only probe of today's file, seed 0, pair-weighted over 5 folds: logistic pooled 0.9565, within 0.9542, cross 0.9571, D = +0.002; LightGBM pooled 0.9543, within 0.9496, cross 0.9557, D = +0.005. So the likely word is NOT-USED. If it comes out otherwise, that is the finding.
+
+**Gaps closed here, no threshold changed.**
+(a) Aggregation: per test fold `pair_auc` (pairs counted only inside one test fold). Over the 5 folds pair-weighted: pooled weighted by all pairs of the fold, within by its same-cohort pairs, cross by its cross-cohort pairs. Per seed D = pooled minus within from these. The verdict uses the plain mean of D over seeds 0-9.
+(b) Fit path: the E1 path (`gap_experiments._fit`, `predict_proba`, `pair_auc`), the only one that reproduces `gapdiag_folds.csv` (the `train._fit_score` path differs on logistic fold 4 by 5e-4). LightGBM model seed 0. Fold seeds via `splits.random_splits(y, seed=s)`.
+(c) Gate 0: seed 0, both models, every fold: pooled / within / cross reproduce the raw random_cv rows of `gapdiag_folds.csv` to 1e-9 and the integer pair counts are equal. Any failure: exit 1, no files.
+(d) Instrument check (positive control 1): logistic, 10 within-cohort shuffles (`label_null.shuffle_within_cohort` seeds 0-9 plus `check_shuffle`), folds re-stratified on the shuffled labels at fold seed 0, same aggregator. Expected within-pair mean about 0.50, pooled about 0.67. STOP if the 10-shuffle mean within-pair AUC is outside 0.45-0.55 (edges pass): write only the JSON with verdict "NO VERDICT (instrument)", no main read.
+(e) Positive control 2 (the author's extra 1): plant a KNOWN hospital offset into the real out-of-fold logistic scores. Offset of a patient = k x sd x z, where sd = standard deviation of that seed's out-of-fold logits, z = the patient's cohort bacterial share, standardised over patients (mean 0, sd 1), so high-bacterial hospitals get higher scores (a shortcut by construction). k in {0.1, 0.25, 0.5, 1.0}. Within-pair AUC must stay unchanged (to 1e-9) because an offset is constant inside a cohort. PASS = mean D at k = 1.0 is >= 0.02 (the method CAN see a shortcut at this signal strength). I also report the smallest k whose mean D reaches 0.02. A FAIL does not change the verdict word, but then NOT-USED is written as "not detected by a method whose sensitivity here is unproven".
+(f) Interval (the author's extra 2): patient-level bootstrap of the 10-seed mean D (logistic and LightGBM). Each replicate draws a bootstrap count per patient (multinomial over 458 patients), shared by all 10 seeds; within each test fold every pair is weighted by the product of its two patients' counts; the same pair-weighted aggregation. B = 2000, numpy seed 0, percentile 2.5 / 97.5. Descriptive only: the verdict word is fixed by the rule on the point mean. If the interval crosses 0.01 or 0.02 it is reported as such.
+(g) Limits written in advance. D is a NET number: a shortcut gain on cross-cohort pairs could be cancelled by hospital offsets that hurt cross-cohort pairs (platform / batch shifts; the 0.076 held-out gap shows such shifts exist). NOT-USED therefore means "the pooled number is not above the within-hospital number", which is what the headline claim needs, not "the model carries no hospital information". Ten fold seeds average away fold assignment, not the patient sample (same 458 arrays); within pairs are only about 23 % of all pairs. The instrument check works in a no-biology regime (D about 0.17); control 2 is what speaks to D about 0.02 on top of a real 0.95 signal.
+
+**Kill line.** USED keeps the 12.11. sentence and sizes it. NOT-USED retracts it: the null measured a ceiling, not a contribution. Neither is a CORE s3 kill; both change the gap story's wording.
+
+**Judge not us.** A fresh sub-agent gets only the CSV and the reading-rule text and returns the logistic 10-seed mean of D, the verdict word and the LightGBM direction; MATCH / MISMATCH is pasted in the RESULT.
+
+**Outputs.** `results/shortcut_pairs_raw.csv` (20 rows), `results/run_shortcut_pairs.json`, `results/shortcut_pairs_planted.csv`. Run on a worker branch.
+
+**In plain terms.** Imagine judging which of two students is the stronger reader. If you only know the school, and one school is famous for strong readers, you can often guess right without hearing either student read. To check whether our model is secretly guessing from the school (the hospital), we compare only pairs from the SAME school, where the school name cannot help, and see if the model is still just as good. If it is, the high score comes from the reading, not from the school's reputation.
+
+## 2026-11-13 — PLAN ADDENDUM (before the real run, no result read): control 2 redesigned, reading rule untouched (PLAN commit `65a9d0b`)
+
+**What happened.** While testing the code I probed control 2 on the real logistic scores, fold seed 0 only (the planted offsets, NOT the main read; no verdict quantity was looked at beyond that seed's known D = +0.0022). Result: every planted hospital offset LOWERS pooled AUC (k 0.1: D -0.0003; k 0.25: -0.006; k 0.5: -0.019; k 1.0: -0.042) and a label-aware search for the best possible per-hospital constant offset (start at zero, coordinate grid, objective = pooled AUC) lifts D only to +0.0035. Reason: pooled AUC is already 0.957, so about 0.043 of headroom is left, and a constant per hospital can fix few of the remaining errors but breaks many correct pairs. So control 2 as written in the PLAN (PASS = mean D at k = 1.0 is >= 0.02) cannot pass on this model, for a reason that has nothing to do with whether the method works.
+
+**Change (control 2 only; the reading rule, thresholds, gate, instrument check and bootstrap are unchanged).** Control 2 now reports three things, all descriptive:
+(1) **Invariance + sensitivity.** Planted offsets (same k grid, plus the k = 0 base) leave the within-pair AUC unchanged (to 1e-9) while pooled moves. PASS = |mean D at k = 0.5 minus mean D at k = 0| >= 0.02 (the metric registers a planted hospital offset of that size).
+(2) **Headroom bound.** For each fold seed, the best label-aware per-hospital offset (start at zero, 41-point grid on -1.0..+1.0 x sd of the out-of-fold logits, 4 coordinate sweeps, objective = pooled AUC through the same aggregator) and the D it reaches: D_max(seed), mean over seeds. It is an upper bound for what any hospital-only additive shortcut can add to this model's pooled AUC.
+(3) **Reading the verdict with the bound.** If mean D_max < 0.02, the USED line cannot be reached by a hospital offset on this model; then NOT-USED is written as "no sign of it, and little room for it" instead of as a strong refutation, and the RESULT says that the control the author asked for ("show D can pass 0.02") is impossible here and why. If mean D_max >= 0.02, the USED line is reachable and NOT-USED stands as written. The verdict WORD is still set only by the rule on the point mean.
+
+## 2026-11-13 — RESULT: the headline does NOT lean on the cohort shortcut = NOT-USED (PLAN `65a9d0b`, ADDENDUM `892e79e`, run on code commit `ffed5fd`)
+
+**Question, in plain words.** The 12.11. null said a model that only knows the hospital already scores about 0.67, so "part of the 0.957 may be hospital mix, not biology". The audit table pointed the other way. Test: compare the model's AUC on ALL (bacterial, viral) pairs with its AUC on pairs where both patients come from the SAME hospital. A same-hospital pair cannot be separated by knowing the hospital. If the two AUCs are equal, the headline does not rely on the shortcut.
+
+**Design before numbers.** Raw random-CV, 458 arrays, 5 folds, fold seeds 0-9, logistic_l2 and LightGBM, E1 fit path, pairs counted only inside one test fold, pair-weighted over folds. D = pooled minus within-pair. Rule fixed in the PLAN: NOT-USED if the 10-seed mean D (logistic) is <= 0.01, USED if >= 0.02, else UNCLEAR.
+
+**Gates.** Gate 0 (seed 0, both models, every fold, vs `gapdiag_folds.csv`): max diff 1.1e-16, 0 pair-count mismatches: passed. Instrument check (10 within-hospital label shuffles, logistic): within-pair AUC mean 0.520 (sd 0.060, per shuffle 0.42-0.60), inside the 0.45-0.55 window; pooled mean 0.671 (matches the 12.11. null to about 5e-4 per shuffle). So with nothing but the hospital to go on, pooled reads 0.67 and the within-pair AUC reads about chance (0.52): the metric separates the two.
+
+**Main numbers (10-seed means).**
+
+| model | pooled | within | cross | D = pooled - within | sd of D over seeds |
+|---|---|---|---|---|---|
+| logistic_l2 | 0.9561 | 0.9547 | 0.9566 | **+0.0014** | 0.0034 |
+| LightGBM | 0.9521 | 0.9483 | 0.9533 | +0.0038 | 0.0050 |
+
+Per-seed logistic D runs from -0.0038 to +0.0078; every seed is under 0.01. Patient-level bootstrap interval for the logistic mean D (B = 2000): -0.0079 to +0.0126 (LightGBM -0.0061 to +0.0146). The upper end touches the 0.01 line but stays under 0.02; the verdict word is set by the point mean, as pre-registered.
+
+**Verdict: NOT-USED** (mean D 0.0014 <= 0.01). LightGBM direction: pooled slightly above within (+0.004), small. Judge not us: a fresh sub-agent that saw only the CSV and the rule text got logistic mean D +0.001414, LightGBM +0.003767, NOT-USED, "above zero": **MATCH** with the JSON; its recomputed D column matched on all 20 rows.
+
+**The 12.11. belief sentence: CORRECTED** (per the rule): "a cohort shortcut could reach about 0.67, but the model's ranking inside each cohort is as good as its pooled ranking, so the headline does not lean on it". The 12.11. null measured a ceiling, not a contribution.
+
+**Control 2 (the author's extra 1) and what it showed.** As pre-registered (planted offset, pass at D >= 0.02 for k = 1.0) the control could not pass; found before the real run and recorded in the ADDENDUM: pooled is 0.957 already, so every planted hospital offset LOWERS pooled. Redesigned control, results: the within-pair AUC does not move at all (shift 0.0) while pooled moves, and mean D shifts by 0.024 at k = 0.5 (D: k=0 +0.0014, k=0.1 -0.0010, k=0.25 -0.0080, k=0.5 -0.0223, k=1.0 -0.0441): sensitivity PASS (the metric registers a planted hospital offset of that size, in the downward direction). Headroom bound: the best label-aware per-hospital constant offset lifts D to only +0.0027 on average over seeds, far below 0.02. So (a) "show D can pass 0.02" is impossible on this model by any hospital-only offset, which is a property of the headroom, not a failure of the method; (b) per the ADDENDUM, NOT-USED is read as **no sign of it, and little room for it**, not as a strong refutation: a hospital-only additive shortcut cannot add more than about 0.003 on top of a model already at 0.957.
+
+**Both schemes (CLAUDE.md rule 4).** Random-CV 0.957 (logistic, `summary_raw.csv`) next to leave-one-cohort-out 0.881: the 0.076 gap stays. Rival 1 (within-hospital pairs are an easier subset for other reasons): in-cohort random-CV AUC / held-out AUC from `gapdiag_cohorts.csv`: GSE63990 0.959 / 0.926, GSE42026 0.893 / 0.832, GSE60244 0.894 / 0.843, GSE40396 0.938 / 0.864, GSE6269 0.988 / 0.938. The model ranks well inside each hospital (0.89-0.99); it is higher than held-out in every cohort, which is the gap, not the shortcut.
+
+**Claim-check.** Claim: the 0.957 random-CV headline does not depend on the cohort/class-mix shortcut. Measured: pooled vs same-cohort-pair AUC, 10 fold seeds, raw. Rival 2 (seed 0 lucky): 10 seeds, sd 0.003. Judge not us: blind sub-agent, MATCH. Limits: D is NET (offsets that help some cross-cohort pairs and hurt others cancel), so NOT-USED means "pooled is not above within", not "no hospital information in the model"; ten fold seeds do not vary the 458 patients (the bootstrap interval is the patient-sample error range and reaches +0.013); within pairs are about 23 % of all pairs; this does NOT say the model transfers to new hospitals (0.881).
+
+**Disclosures.** Row 14's numbers (0.954 / 0.953) came from the old 463-array file; the planning probe used today's 458-array file (seed 0 D = +0.002, reproduced). The E1 fit path differs from the headline `train._fit_score` path by about 5e-4 on one logistic fold (seed-0 pooled 0.95647 vs headline 0.95660); not chased, cannot move a verdict. The control-2 redesign was made after a probe on fold seed 0 and before the main run (ADDENDUM). Red-first checked: breaking the code four ways (within/cross masks swapped, plain fold mean, `<` instead of `<=`, Gate 0 skipped) each turned tests red. Suite: 255 passed (234 + 21 new).
+
+**Where.** `results/shortcut_pairs_raw.csv` (20 rows), `results/shortcut_pairs_planted.csv`, `results/run_shortcut_pairs.json`, `src/shortcut_pairs.py`, `src/shortcut_extras.py`, `run_shortcut_pairs.py`, `tests/test_shortcut_pairs.py`.
+
+**Belief.** Updated: the headline's 0.957 does not come from knowing the hospital. The gap to the held-out 0.881 still stands and is the real story.
+
+
+## 2026-11-14 — Results of 10.–13.11. carried into this public copy
+
+**Question.** This copy stood at the 10.11. state. Can the Bodkin side-by-side, the label-shuffle null and the same-hospital-pair check come over without private material and without any number changing?
+
+**Done.** Code, tests and result files for the three checks copied from the private working repo; the PLAN / ADDENDUM / RESULT entries above appended; README: a short section "Two checks on the random-CV headline itself", the Bodkin side-by-side paragraph in section 8, two Reproduce lines, test count 211 → 253. Same privacy scrub as before (names, task-card ids, branch names and private-repo notes removed; author → "the author"). An internal German status page was left out. The 08.11. write-up page is a dated snapshot and was not changed.
+
+**Measured.** Re-computed from the committed files in this copy: label shuffle global mean 0.502 (max 0.574), within-hospital 0.668; same-hospital pairs mean D logistic +0.0014, LightGBM +0.0038; headroom bound 0.0027. All match the RESULT entries. `pytest`: 253 passed.
+
+**Belief.** The 0.957 headline does not come from knowing the hospital; the 0.076 gap to a new hospital (0.957 vs 0.881) stands and is the result.
+
+**Where.** README.md sections 3 and 8, LABBOOK.md, `results/`, `src/label_null.py`, `src/shortcut_pairs.py`, `src/shortcut_extras.py`, `run_label_null.py`, `run_shortcut_pairs.py`, `tests/`.

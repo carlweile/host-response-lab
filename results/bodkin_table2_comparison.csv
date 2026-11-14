@@ -1,0 +1,6 @@
+series,in_bodkin,bodkin_median,bodkin_q1,bodkin_q3,bodkin_n,bodkin_phenotypes,our_random_cv,our_loco,source,viral_median,viral_q1,viral_q3,note
+GSE63990,yes,0.8987,0.844,0.909,280,"Bacterial, viral, SIRS",0.9591,0.9262,"Table S9, row 40, study ID GSE63990",0.9201,0.886,0.936,Bodkin negative class incl. healthy/SIRS; ours bacterial vs viral only
+GSE42026,yes,0.78,0.65,0.837,92,"Bacterial, viral, healthy",0.893,0.832,"Table S9, row 33, study ID GSE42026",0.8388,0.736,0.877,Bodkin negative class incl. healthy/SIRS; ours bacterial vs viral only
+GSE60244,yes,0.7623,0.682,0.793,133,"Bacterial, viral, healthy",0.8944,0.8431,"Table S9, row 35, study ID GSE60244",0.8455,0.81,0.895,Bodkin negative class incl. healthy/SIRS; ours bacterial vs viral only
+GSE40396,yes,0.8684,0.82,0.91,65,"Bacterial, viral, healthy",0.9375,0.8636,"Table S9, row 31, study ID GSE40396",0.7648,0.725,0.805,Bodkin negative class incl. healthy/SIRS; ours bacterial vs viral only
+GSE6269,yes,0.8453,0.818,0.876,97,"Bacterial, viral, healthy",0.9878,0.9384,"Table S9, row 39, study ID GSE6269-2",0.9578,0.921,0.974,"Bodkin negative class incl. healthy/SIRS; ours bacterial vs viral only; Bodkin row GSE6269-1 (GPL570, n=22, Table S9 row 38, bact median 0.908 [0.775-0.958]) not used"
