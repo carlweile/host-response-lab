@@ -16,7 +16,8 @@ hard decision is *bacterial or viral?* Antibiotics help one and not the other.
 A line of research since about 2007 reads the patient's own immune response in
 blood (which genes are switched on, the "host response") and trains a classifier
 on it. Published papers report areas under the ROC curve (AUC) of **0.93 to
-0.95**; two such tests are FDA-cleared.
+0.95**; two host-response tests are FDA-cleared (TriVerity reads 29 mRNAs;
+MeMed BV reads 3 proteins, not genes).
 
 Those AUCs are almost always measured by splitting one study's patients at
 random into training and test sets. Every patient in the test set then shares a

@@ -83,7 +83,7 @@ a{color:var(--accent)}
 </div>
 
 <h2>1. The question and why it matters</h2>
-<p>A patient arrives with a fever. Bacterial or viral? Antibiotics help one and not the other. Since about 2007 a line of research reads the patient's own immune response in blood, the genes switched on in white blood cells, and trains a classifier on it. Published areas under the ROC curve (AUC) sit at 0.93 to 0.95, and two such tests are FDA-cleared.</p>
+<p>A patient arrives with a fever. Bacterial or viral? Antibiotics help one and not the other. Since about 2007 a line of research reads the patient's own immune response in blood, the genes switched on in white blood cells, and trains a classifier on it. Published areas under the ROC curve (AUC) sit at 0.93 to 0.95, and two host-response tests are FDA-cleared (TriVerity reads 29 mRNAs; MeMed BV reads 3 proteins, not genes).</p>
 <p>Those AUCs are almost always measured by splitting one study's patients at random. Every test patient then shares a hospital, a lab protocol and a microarray chip with the training patients. The model is free to learn those local quirks and is rewarded for it. A real test is used on a hospital it has never seen.</p>
 <p>The gap between those two numbers is measurable from public data, is reported inconsistently in the literature, and in October 2026 we found no public code that computed it in one run. That gap is this project's whole subject. It is not a better classifier, not a new gene signature and not a clinical claim.</p>
 
